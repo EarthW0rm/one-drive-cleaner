@@ -193,3 +193,48 @@ def test_list_ids_in_roots_sem_raizes_ou_estados(session: Session, root: ScanRoo
 def test_list_ids_in_roots_rejeita_estado_invalido(session: Session, root: ScanRootRow) -> None:
     with pytest.raises(StorageValidationError):
         items.list_ids_in_roots(session, [root.id], ["NOPE"])
+
+
+def test_list_failures_pagina_so_as_falhas(session: Session, make_item: ItemFactory) -> None:
+    failed = [make_item("DESCOBERTO") for _ in range(3)]
+    for created in failed:
+        items.mark_failure(session, created.id, "decode_error", now=NOW)
+    make_item("ANALISADO")
+
+    first = items.list_failures(session, limit=2)
+    assert [r.id for r in first.rows] == [failed[0].id, failed[1].id]
+    assert first.next_cursor is not None
+    assert {(r.failure_reason, r.failure_count) for r in first.rows} == {("decode_error", 1)}
+
+    second = items.list_failures(session, cursor=first.next_cursor, limit=2)
+    assert [r.id for r in second.rows] == [failed[2].id]
+    assert second.next_cursor is None
+
+
+def test_list_failures_valida_limite_e_cursor(session: Session) -> None:
+    with pytest.raises(StorageValidationError):
+        items.list_failures(session, limit=0)
+    with pytest.raises(StorageValidationError):
+        items.list_failures(session, cursor="x", limit=1)
+
+
+def test_requeue_failed_so_mexe_em_itens_com_falha(
+    session: Session, make_item: ItemFactory
+) -> None:
+    failed = make_item("DESCOBERTO")
+    items.mark_failure(session, failed.id, "no_thumbnail", now=NOW)
+    analyzed = make_item("ANALISADO")
+
+    assert items.requeue_failed(session, [failed.id, analyzed.id], now=LATER) == [failed.id]
+
+    restored = items.get(session, failed.id)
+    assert restored is not None
+    assert (restored.state, restored.failure_reason, restored.failure_count) == (
+        "DESCOBERTO",
+        None,
+        0,
+    )
+    untouched = items.get(session, analyzed.id)
+    assert untouched is not None
+    assert untouched.state == "ANALISADO"
+    assert items.requeue_failed(session, [], now=LATER) == []

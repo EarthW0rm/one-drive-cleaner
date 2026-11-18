@@ -8,13 +8,15 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from odc.storage.dto import ItemRow
+from odc.storage.cursor import Cursor, decode_cursor, encode_cursor
+from odc.storage.dto import ItemRow, Page
 from odc.storage.errors import NotFoundError, StorageValidationError
 from odc.storage.repositories._common import dto_columns, execute_dml, to_dto
 from odc.storage.tables import FAILURE_REASONS, ITEM_STATES, item
 
 _COLUMNS = dto_columns(item, ItemRow)
 _CHUNK = 500
+_MAX_PAGE = 100
 _MUTABLE = (
     "scan_root_id",
     "parent_id",
@@ -191,3 +193,39 @@ def mark_failure(session: Session, item_id: int, reason: str, *, now: str) -> No
     )
     if result.rowcount == 0:
         raise NotFoundError("item inexistente")
+
+
+def list_failures(session: Session, *, cursor: str | None = None, limit: int) -> Page[ItemRow]:
+    """Itens em `FALHA_ANALISE`, por id crescente, com paginação por cursor (sem `SELECT *`)."""
+    if not 1 <= limit <= _MAX_PAGE:
+        raise StorageValidationError("limit fora do intervalo permitido")
+    after_id = 0 if cursor is None else decode_cursor(cursor).last_id
+    stmt = (
+        select(*_COLUMNS)
+        .where(item.c.state == "FALHA_ANALISE", item.c.id > after_id)
+        .order_by(item.c.id)
+        .limit(limit + 1)
+    )
+    rows = [to_dto(ItemRow, r) for r in session.execute(stmt)]
+    page, extra = rows[:limit], rows[limit:]
+    next_cursor = None
+    if extra:
+        next_cursor = encode_cursor(Cursor(last_key=None, last_id=page[-1].id))
+    return Page(rows=tuple(page), next_cursor=next_cursor)
+
+
+def requeue_failed(session: Session, item_ids: Sequence[int], *, now: str) -> list[int]:
+    """Itens `FALHA_ANALISE` da lista voltam a `DESCOBERTO` (motivo e contagem limpos).
+
+    Ids em outro estado são ignorados (não alterados). Devolve os ids efetivamente
+    reenfileirados, em ordem crescente.
+    """
+    if not item_ids:
+        return []
+    stmt = (
+        update(item)
+        .where(item.c.id.in_(list(item_ids)), item.c.state == "FALHA_ANALISE")
+        .values(state="DESCOBERTO", failure_reason=None, failure_count=0, updated_at=now)
+        .returning(item.c.id)
+    )
+    return sorted(int(row[0]) for row in session.execute(stmt))

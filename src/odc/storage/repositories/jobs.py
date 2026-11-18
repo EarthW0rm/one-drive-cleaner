@@ -31,6 +31,7 @@ from odc.storage.tables import JOB_STATUSES, JOB_TYPES, PAUSE_REASONS, job
 _COLUMNS = dto_columns(job, JobRow)
 
 ACTIVE_STATUSES = ("queued", "running", "paused")
+MAX_LIST_LIMIT = 100
 
 
 def _dump_payload(payload: Mapping[str, object]) -> str:
@@ -81,6 +82,29 @@ def list_by_status(session: Session, status: str, *, limit: int) -> Sequence[Job
         .order_by(job.c.priority.desc(), job.c.created_at, job.c.id)
         .limit(limit)
     )
+    return [to_dto(JobRow, r) for r in session.execute(stmt)]
+
+
+def list_jobs(
+    session: Session,
+    *,
+    status: str | None = None,
+    job_type: str | None = None,
+    limit: int,
+) -> Sequence[JobRow]:
+    """Jobs filtrados por status e/ou tipo, do mais recente para o mais antigo (id desc)."""
+    if status is not None and status not in JOB_STATUSES:
+        raise StorageValidationError("status de job inválido")
+    if job_type is not None and job_type not in JOB_TYPES:
+        raise StorageValidationError("tipo de job inválido")
+    if not 1 <= limit <= MAX_LIST_LIMIT:
+        raise StorageValidationError("limit fora do intervalo permitido")
+    stmt = select(*_COLUMNS)
+    if status is not None:
+        stmt = stmt.where(job.c.status == status)
+    if job_type is not None:
+        stmt = stmt.where(job.c.type == job_type)
+    stmt = stmt.order_by(job.c.id.desc()).limit(limit)
     return [to_dto(JobRow, r) for r in session.execute(stmt)]
 
 

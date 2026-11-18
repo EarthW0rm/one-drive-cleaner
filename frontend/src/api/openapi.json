@@ -71,6 +71,64 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "FailureModel": {
+        "properties": {
+          "failure_count": {
+            "title": "Failure Count",
+            "type": "integer"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "failure_reason",
+          "failure_count"
+        ],
+        "title": "FailureModel",
+        "type": "object"
+      },
+      "FailuresResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FailureModel"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "FailuresResponse",
+        "type": "object"
+      },
       "FolderModel": {
         "properties": {
           "child_count": {
@@ -143,6 +201,184 @@
           "graph_auth"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "JobModel": {
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ProgressModel"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "status",
+          "progress",
+          "pause_reason",
+          "error_code"
+        ],
+        "title": "JobModel",
+        "type": "object"
+      },
+      "JobType": {
+        "enum": [
+          "scan",
+          "extract",
+          "classify",
+          "train",
+          "auto_actions",
+          "move",
+          "restore",
+          "delete",
+          "reconcile",
+          "cleanup"
+        ],
+        "title": "JobType",
+        "type": "string"
+      },
+      "JobsResponse": {
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobModel"
+            },
+            "title": "Jobs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "jobs"
+        ],
+        "title": "JobsResponse",
+        "type": "object"
+      },
+      "ProgressModel": {
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "done",
+          "total"
+        ],
+        "title": "ProgressModel",
+        "type": "object"
+      },
+      "RetryFailuresRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "item_ids": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "RetryFailuresRequest",
+        "type": "object"
+      },
+      "RetryFailuresResponse": {
+        "properties": {
+          "job_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Job Ids",
+            "type": "array"
+          },
+          "requeued": {
+            "title": "Requeued",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_ids",
+          "requeued",
+          "skipped"
+        ],
+        "title": "RetryFailuresResponse",
+        "type": "object"
+      },
+      "ScanAcceptedResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "ScanAcceptedResponse",
+        "type": "object"
+      },
+      "ScanRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "auto",
+              "full"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "ScanRequest",
         "type": "object"
       },
       "ScanRootModel": {
@@ -247,6 +483,210 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/failures": {
+      "get": {
+        "operationId": "list_failures",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailuresResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job inexistente"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Estado do job não permite a ação"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Cursor inválido"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Processamento indisponível"
+          }
+        },
+        "summary": "List Failures",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/failures/retry": {
+      "post": {
+        "operationId": "retry_failures",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryFailuresRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryFailuresResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job inexistente"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Estado do job não permite a ação"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Cursor inválido"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Processamento indisponível"
+          }
+        },
+        "summary": "Retry Failures",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/folders": {
       "get": {
         "operationId": "list_folders",
@@ -346,6 +786,312 @@
         "summary": "List Folders",
         "tags": [
           "folders"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "operationId": "list_jobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "paused",
+                    "done",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/JobType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job inexistente"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Estado do job não permite a ação"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Cursor inválido"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Processamento indisponível"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/pause": {
+      "post": {
+        "operationId": "pause_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Job Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job inexistente"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Estado do job não permite a ação"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Cursor inválido"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Processamento indisponível"
+          }
+        },
+        "summary": "Pause Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/resume": {
+      "post": {
+        "operationId": "resume_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Job Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job inexistente"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Estado do job não permite a ação"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Cursor inválido"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Processamento indisponível"
+          }
+        },
+        "summary": "Resume Job",
+        "tags": [
+          "jobs"
         ]
       }
     },
@@ -516,6 +1262,97 @@
         "summary": "Set Scan Roots",
         "tags": [
           "folders"
+        ]
+      }
+    },
+    "/api/scans": {
+      "post": {
+        "operationId": "create_scan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job inexistente"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Estado do job não permite a ação"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Cursor inválido"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Processamento indisponível"
+          }
+        },
+        "summary": "Create Scan",
+        "tags": [
+          "jobs"
         ]
       }
     },

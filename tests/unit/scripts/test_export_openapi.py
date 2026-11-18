@@ -20,6 +20,12 @@ def test_schema_contem_rotas_de_sistema() -> None:
         "/auth/logout",
         "/api/folders",
         "/api/scan-roots",
+        "/api/scans",
+        "/api/jobs",
+        "/api/jobs/{job_id}/pause",
+        "/api/jobs/{job_id}/resume",
+        "/api/failures",
+        "/api/failures/retry",
     }
 
 

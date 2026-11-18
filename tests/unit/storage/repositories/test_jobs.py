@@ -346,3 +346,30 @@ def test_list_active_payloads_traz_so_ativos_do_tipo_em_ordem(session: Session) 
 def test_list_active_payloads_rejeita_tipo_invalido(session: Session) -> None:
     with pytest.raises(StorageValidationError):
         jobs.list_active_payloads(session, "nope")
+
+
+def test_list_jobs_filtra_por_status_e_tipo_do_mais_recente(session: Session) -> None:
+    first = jobs.enqueue(session, job_type="scan", payload={}, now=T1)
+    second = jobs.enqueue(session, job_type="move", payload={}, now=T2)
+    third = jobs.enqueue(session, job_type="scan", payload={}, now=T3)
+    jobs.pause(session, third.id, reason="user")
+
+    def ids(**filters: object) -> list[int]:
+        return [j.id for j in jobs.list_jobs(session, limit=10, **filters)]  # type: ignore[arg-type]
+
+    assert ids() == [third.id, second.id, first.id]
+    assert ids(job_type="scan") == [third.id, first.id]
+    assert ids(status="paused") == [third.id]
+    assert ids(status="queued", job_type="move") == [second.id]
+    assert len(jobs.list_jobs(session, limit=2)) == 2
+
+
+def test_list_jobs_valida_filtros_e_limite(session: Session) -> None:
+    with pytest.raises(StorageValidationError):
+        jobs.list_jobs(session, status="x", limit=1)
+    with pytest.raises(StorageValidationError):
+        jobs.list_jobs(session, job_type="x", limit=1)
+    with pytest.raises(StorageValidationError):
+        jobs.list_jobs(session, limit=0)
+    with pytest.raises(StorageValidationError):
+        jobs.list_jobs(session, limit=101)
