@@ -5,6 +5,7 @@ import logging
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from opentelemetry.sdk.trace import TracerProvider
 from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Message, Receive, Scope, Send
@@ -161,3 +162,19 @@ def test_escopo_nao_http_passa_direto() -> None:
     asyncio.run(wrapped({"type": "lifespan"}, never_receive, never_send))
 
     assert calls == ["lifespan"]
+
+
+def test_trace_id_do_log_e_o_do_span_otel_ativo(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    provider = TracerProvider()
+    tracer = provider.get_tracer("teste")
+
+    with (
+        tracer.start_as_current_span("requisicao") as span,
+        caplog.at_level(logging.ERROR, logger="odc.web.errors"),
+    ):
+        client.get("/boom")
+
+    record = next(r for r in caplog.records if r.message == "erro não tratado na API")
+    assert getattr(record, "trace_id", "") == format(span.get_span_context().trace_id, "032x")

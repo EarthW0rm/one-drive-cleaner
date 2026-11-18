@@ -15,6 +15,7 @@ import urllib.request
 import webbrowser
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Protocol
 
@@ -26,6 +27,8 @@ from odc import paths
 from odc.config import AppSettings
 from odc.storage.engine import create_engine_for
 from odc.storage.migrate import MigrationError, upgrade
+from odc.telemetry.instrument import HttpxHooks, instrument_all
+from odc.telemetry.setup import TelemetryHandle, init_telemetry
 from odc.web.app import create_app
 from odc.web.services import AppServices
 
@@ -57,6 +60,7 @@ class Runtime:
     db_path: Path
     engine: Engine
     app: FastAPI
+    telemetry: TelemetryHandle
 
 
 class StartupHook(Protocol):
@@ -89,8 +93,22 @@ def _run_hook(hook: StartupHook, runtime: Runtime) -> None:
         )
 
 
-def bootstrap(settings: AppSettings, hooks: Sequence[StartupHook] = ()) -> Runtime:
-    """Aplica migrações, executa os hooks em ordem e monta a aplicação FastAPI."""
+def _package_version() -> str:
+    try:
+        return metadata.version("onedrive-cleaner")
+    except metadata.PackageNotFoundError:
+        return "0.0.0"
+
+
+def bootstrap(
+    settings: AppSettings,
+    hooks: Sequence[StartupHook] = (),
+    httpx_hooks: HttpxHooks | None = None,
+) -> Runtime:
+    """Aplica migrações, inicializa a telemetria, executa os hooks e monta a aplicação FastAPI.
+
+    A telemetria sobe antes do app e nunca impede a inicialização (RN-25).
+    """
     db_path = paths.local_db_path()
     try:
         upgrade(db_path)
@@ -98,10 +116,18 @@ def bootstrap(settings: AppSettings, hooks: Sequence[StartupHook] = ()) -> Runti
         message = f"falha na migração do banco ({error.code})."
         raise BootstrapError(EXIT_FAILURE, message) from error
     engine = create_engine_for(db_path)
+    telemetry = init_telemetry(settings, _package_version())
     app = create_app(settings, AppServices(engine=engine))
-    runtime = Runtime(settings=settings, db_path=db_path, engine=engine, app=app)
-    for hook in hooks:
-        _run_hook(hook, runtime)
+    instrument_all(app, telemetry, httpx_hooks)
+    runtime = Runtime(
+        settings=settings, db_path=db_path, engine=engine, app=app, telemetry=telemetry
+    )
+    try:
+        for hook in hooks:
+            _run_hook(hook, runtime)
+    except BootstrapError:
+        telemetry.shutdown()
+        raise
     return runtime
 
 
@@ -194,4 +220,5 @@ def run(
     finally:
         running.server.should_exit = True
         running.thread.join(SHUTDOWN_TIMEOUT_S)
+        runtime.telemetry.shutdown()
     return EXIT_OK

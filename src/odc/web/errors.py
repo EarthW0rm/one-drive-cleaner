@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from odc.telemetry.tracing import current_trace_id
+
 logger = logging.getLogger(__name__)
 
 HTTP_NOT_FOUND = 404
@@ -157,7 +159,8 @@ class UnhandledErrorMiddleware:
     """Converte exceções não tratadas em `INTERNAL` sem stack trace no corpo.
 
     Fica dentro dos demais middlewares para que a resposta 500 também receba os cabeçalhos
-    de segurança. O stack trace vai apenas para o log local, com um `trace_id` de correlação.
+    de segurança. O stack trace vai apenas para o log local, com um `trace_id` de correlação:
+    o do span OTel ativo (quando há) ou um UUID.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -178,7 +181,9 @@ class UnhandledErrorMiddleware:
         try:
             await self.app(scope, receive, tracking_send)
         except Exception:
-            logger.exception("erro não tratado na API", extra={"trace_id": uuid4().hex})
+            logger.exception(
+                "erro não tratado na API", extra={"trace_id": current_trace_id() or uuid4().hex}
+            )
             if started:
                 raise
             response = error_response(

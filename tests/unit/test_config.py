@@ -35,6 +35,8 @@ def test_valores_padrao_sem_arquivo_nem_ambiente(home: Path) -> None:
     assert settings.host == "127.0.0.1"
     assert settings.open_browser is True
     assert settings.log_level == "INFO"
+    assert settings.otel_enabled is True
+    assert settings.otel_endpoint == "http://127.0.0.1:4317"
 
 
 def test_variavel_de_ambiente_tem_precedencia_sobre_toml(
@@ -174,3 +176,41 @@ def test_overrides_da_cli_tem_precedencia_sobre_ambiente(
 def test_overrides_invalidos_viram_config_error(home: Path) -> None:
     with pytest.raises(ConfigError, match="campo 'port'"):
         load_settings({"port": 80})
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://127.0.0.1:4317",
+        "http://localhost:4317",
+        "http://[::1]:4317",
+        "https://127.0.0.1:4318",
+    ],
+)
+def test_otel_endpoint_de_loopback_e_aceito(home: Path, endpoint: str) -> None:
+    assert AppSettings(otel_endpoint=endpoint).otel_endpoint == endpoint
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://collector.exemplo.com:4317",
+        "http://10.0.0.5:4317",
+        "http://127.0.0.1.evil.com:4317",
+        "grpc://127.0.0.1:4317",
+        "127.0.0.1:4317",
+        "http://127.0.0.1:porta",
+        "",
+    ],
+)
+def test_otel_endpoint_fora_de_loopback_e_rejeitado(home: Path, endpoint: str) -> None:
+    with pytest.raises(ConfigError, match="otel_endpoint"):
+        load_settings({"otel_endpoint": endpoint})
+
+
+def test_otel_enabled_pode_ser_desligado_por_ambiente(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ODC_OTEL_ENABLED", "false")
+
+    assert load_settings().otel_enabled is False

@@ -9,9 +9,13 @@ import urllib.request
 import webbrowser
 from collections.abc import Iterator
 from email.message import Message
+from importlib import metadata
 from pathlib import Path
 
 import pytest
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from odc import bootstrap as bootstrap_module
 from odc.bootstrap import (
@@ -26,6 +30,7 @@ from odc.bootstrap import (
 )
 from odc.config import AppSettings
 from odc.storage.migrate import MigrationError
+from odc.telemetry.setup import Exporters, TelemetryHandle, init_telemetry
 
 PRIVATE_MODE = 0o600
 LOOPBACK = "127.0.0.1"
@@ -50,7 +55,7 @@ def free_port() -> int:
 
 @pytest.fixture
 def runtime(home: Path, free_port: int) -> Iterator[Runtime]:
-    created = bootstrap(AppSettings(port=free_port))
+    created = bootstrap(AppSettings(port=free_port, otel_enabled=False))
     yield created
     created.engine.dispose()
 
@@ -93,7 +98,7 @@ def test_bootstrap_executa_hooks_na_ordem_registrada(home: Path, free_port: int)
         RecordingHook("requeue_orphans", log, critical=True),
     ]
 
-    created = bootstrap(AppSettings(port=free_port), hooks)
+    created = bootstrap(AppSettings(port=free_port, otel_enabled=False), hooks)
     created.engine.dispose()
 
     assert log == ["cleanup", "reconcile", "requeue_orphans"]
@@ -109,7 +114,7 @@ def test_hook_nao_critico_que_falha_loga_erro_e_continua(
     ]
 
     with caplog.at_level(logging.ERROR, logger="odc.bootstrap"):
-        created = bootstrap(AppSettings(port=free_port), hooks)
+        created = bootstrap(AppSettings(port=free_port, otel_enabled=False), hooks)
     created.engine.dispose()
 
     assert log == ["cleanup", "reconcile"]
@@ -125,7 +130,7 @@ def test_hook_critico_que_falha_aborta_com_exit_2(home: Path, free_port: int) ->
     ]
 
     with pytest.raises(BootstrapError) as error:
-        bootstrap(AppSettings(port=free_port), hooks)
+        bootstrap(AppSettings(port=free_port, otel_enabled=False), hooks)
 
     assert error.value.exit_code == EXIT_FAILURE
     assert "requeue_orphans" in str(error.value)
@@ -141,7 +146,7 @@ def test_falha_de_migracao_retorna_exit_2(
     monkeypatch.setattr(bootstrap_module, "upgrade", failing_upgrade)
 
     with pytest.raises(BootstrapError) as error:
-        bootstrap(AppSettings(port=free_port))
+        bootstrap(AppSettings(port=free_port, otel_enabled=False))
 
     assert error.value.exit_code == EXIT_FAILURE
     assert "DB_FUTURE_VERSION" in str(error.value)
@@ -265,3 +270,87 @@ def test_join_until_interrupt_espera_a_thread_terminar() -> None:
     bootstrap_module._join_until_interrupt(finished)
 
     assert finished.is_alive() is False
+
+
+class _MemoryExporters:
+    """Exportadores em memória injetados no `init_telemetry` do bootstrap."""
+
+    def __init__(self) -> None:
+        self.spans = InMemorySpanExporter()
+        self.exporters = Exporters(
+            spans=self.spans,
+            metrics=InMemoryMetricReader(),
+            logs=InMemoryLogRecordExporter(),  # type: ignore[no-untyped-call]
+        )
+        self.handles: list[TelemetryHandle] = []
+
+    def init(self, settings: AppSettings, version: str) -> TelemetryHandle:
+        handle = init_telemetry(settings, version, exporters=self.exporters, set_global=False)
+        self.handles.append(handle)
+        return handle
+
+
+@pytest.fixture
+def memory_exporters(monkeypatch: pytest.MonkeyPatch) -> Iterator[_MemoryExporters]:
+    memory = _MemoryExporters()
+    monkeypatch.setattr(bootstrap_module, "init_telemetry", memory.init)
+    yield memory
+    for handle in memory.handles:
+        handle.shutdown()
+
+
+def test_bootstrap_inicializa_telemetria_antes_do_app_e_instrumenta_api(
+    home: Path, free_port: int, memory_exporters: _MemoryExporters
+) -> None:
+    created = bootstrap(AppSettings(port=free_port))
+    try:
+        assert created.telemetry.enabled is True
+        assert memory_exporters.handles == [created.telemetry]
+        created.app.openapi()  # app montado e instrumentado sem erro
+    finally:
+        created.engine.dispose()
+
+
+def test_run_encerra_a_telemetria_ao_sair(
+    home: Path, free_port: int, memory_exporters: _MemoryExporters
+) -> None:
+    created = bootstrap(AppSettings(port=free_port))
+    try:
+        run(created, open_browser=False, wait_for_exit=lambda thread: None)
+        assert created.telemetry.shutdown() is True  # idempotente: já encerrada pelo run
+        assert created.telemetry.closed is True
+    finally:
+        created.engine.dispose()
+
+
+def test_hook_critico_que_falha_encerra_a_telemetria(
+    home: Path, free_port: int, memory_exporters: _MemoryExporters
+) -> None:
+    hooks: list[StartupHook] = [RecordingHook("x", [], critical=True, fails=True)]
+
+    with pytest.raises(BootstrapError):
+        bootstrap(AppSettings(port=free_port), hooks)
+
+    assert memory_exporters.handles[0].closed is True
+
+
+def test_telemetria_desligada_nao_impede_a_aplicacao(home: Path, free_port: int) -> None:
+    created = bootstrap(AppSettings(port=free_port, otel_enabled=False))
+    try:
+        assert created.telemetry.enabled is False
+        assert run(created, open_browser=False, wait_for_exit=lambda thread: None) == EXIT_OK
+    finally:
+        created.engine.dispose()
+
+
+def test_package_version_usa_metadados_e_cai_para_padrao(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert bootstrap_module._package_version() == metadata.version("onedrive-cleaner")
+
+    def missing(name: str) -> str:
+        raise metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(metadata, "version", missing)
+
+    assert bootstrap_module._package_version() == "0.0.0"

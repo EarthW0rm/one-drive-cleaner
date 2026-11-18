@@ -9,8 +9,9 @@ import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, override
+from urllib.parse import urlsplit
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
@@ -21,6 +22,8 @@ from pydantic_settings import (
 from odc import paths
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+DEFAULT_OTEL_ENDPOINT = "http://127.0.0.1:4317"
 GUID_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
 
@@ -65,6 +68,24 @@ class AppSettings(BaseSettings):  # type: ignore[explicit-any]  # __init__ de Ba
     host: Literal["127.0.0.1"] = "127.0.0.1"
     open_browser: bool = True
     log_level: LogLevel = "INFO"
+    otel_enabled: bool = True
+    otel_endpoint: str = DEFAULT_OTEL_ENDPOINT
+
+    @field_validator("otel_endpoint")
+    @classmethod
+    def _require_loopback_endpoint(cls, value: str) -> str:
+        """Telemetria nunca sai da máquina (RN-24): só endpoints de loopback."""
+        try:
+            parts = urlsplit(value)
+            hostname = parts.hostname
+            parts.port  # noqa: B018 - valida a porta (ValueError se inválida)
+        except ValueError as exc:
+            message = "otel_endpoint deve ser uma URL válida de loopback"
+            raise ValueError(message) from exc
+        if parts.scheme not in {"http", "https"} or hostname not in LOOPBACK_HOSTS:
+            message = "otel_endpoint deve apontar para loopback (127.0.0.1, localhost ou ::1)"
+            raise ValueError(message)
+        return value
 
     @classmethod
     @override
