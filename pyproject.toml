@@ -56,8 +56,18 @@ dev = [
     "pyyaml",
     "respx",
     "ruff",
+    "scikit-learn>=1.9.1",
     "types-pyyaml",
     "vulture",
+]
+# Spike de benchmark (TF-150): `uv sync --group ml`. Fora do `uv sync` padrão por causa do tamanho do torch.
+ml = [
+    "numpy>=2.5.5",
+    "open-clip-torch>=4.2.2",
+    "pillow>=13.0.0",
+    "pillow-heif>=1.8.1",
+    "scikit-learn>=1.9.1",
+    "torch>=2.15.0",
 ]
 
 [tool.ruff]
@@ -87,11 +97,16 @@ strict = true
 disallow_any_explicit = true
 disallow_any_generics = true
 warn_unreachable = true
-files = ["src", "scripts", "tests"]
+files = ["src", "scripts", "tests", "spikes"]
 
 [[tool.mypy.overrides]]
 # MSAL e msal-extensions não distribuem tipos; o acesso fica isolado em odc.auth.
 module = ["msal", "msal.*", "msal_extensions", "msal_extensions.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# scikit-learn não distribui py.typed; o uso fica restrito ao spike de benchmark.
+module = ["sklearn", "sklearn.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -106,6 +121,7 @@ addopts = [
     "--cov=odc",
     "--cov=scripts",
     "--cov=tests/fakes",
+    "--cov=spikes",
     "--cov-branch",
     "--cov-fail-under=90",
 ]
@@ -175,14 +191,14 @@ modules = ["odc.quarantine", "odc.scanning", "odc.cleanup"]
 
 [tool.deptry]
 known_first_party = ["odc"]
-extend_exclude = ["scripts", "tests"]
+extend_exclude = ["scripts", "tests", "spikes"]
 
 [tool.deptry.per_rule_ignores]
 # itsdangerous: exigido em runtime pelo SessionMiddleware do Starlette (cookie assinado).
 DEP002 = ["itsdangerous"]
 
 [tool.vulture]
-paths = ["src", "scripts"]
+paths = ["src", "scripts", "spikes"]
 min_confidence = 80
 # Parâmetros exigidos pelas assinaturas de BaseSettings.settings_customise_sources e
 # PydanticBaseSettingsSource.get_field_value: o pydantic-settings os passa por nome.
