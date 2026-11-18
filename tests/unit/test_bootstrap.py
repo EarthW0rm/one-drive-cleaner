@@ -41,6 +41,7 @@ from odc.jobs.handler import HandlerDeps, HandlerFactory, JobContext
 from odc.jobs.payloads import ScanPayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType
+from odc.quarantine.journal import JournalPendingSource
 from odc.scanning.scanner import ScanLastSuccessSource
 from odc.storage import account_db as account_db_module
 from odc.storage.migrate import MigrationError
@@ -604,7 +605,7 @@ def test_fabrica_sem_graph_deixa_o_scan_sem_handler_e_mantem_a_limpeza(
         created.engine.dispose()
 
 
-def test_bootstrap_registra_os_gauges_de_varredura_e_de_disco(
+def test_bootstrap_registra_os_gauges_de_varredura_disco_e_diario(
     home: Path, free_port: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registered: list[tuple[ObservableName, object]] = []
@@ -623,9 +624,12 @@ def test_bootstrap_registra_os_gauges_de_varredura_e_de_disco(
         assert [name for name, _ in registered] == [
             ObservableName.SCAN_LAST_SUCCESS,
             ObservableName.DISK_USAGE,
+            ObservableName.JOURNAL_PENDING,
         ]
         assert isinstance(registered[0][1], ScanLastSuccessSource)
         assert registered[0][1].collect() == []
         assert isinstance(registered[1][1], DiskUsageSource)
+        assert isinstance(registered[2][1], JournalPendingSource)
+        assert sum(sample.value for sample in registered[2][1].collect()) == 0
     finally:
         created.engine.dispose()

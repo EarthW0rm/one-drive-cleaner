@@ -33,7 +33,7 @@ def test_upgrade_em_banco_vazio_chega_ao_head(tmp_path: Path) -> None:
     upgrade(db_path)
 
     head = ScriptDirectory.from_config(migrate._config()).get_current_head()
-    assert _scalar(db_path, "SELECT version_num FROM alembic_version") == head == "0001"
+    assert _scalar(db_path, "SELECT version_num FROM alembic_version") == head == "0002"
 
 
 def test_upgrade_e_idempotente_e_nao_duplica_seeds(tmp_path: Path) -> None:
@@ -156,3 +156,28 @@ def test_falha_no_meio_da_migracao_faz_rollback_completo(
     assert _scalar(db_path, "SELECT COUNT(name) FROM sqlite_master WHERE type='table'") == 0
     upgrade(db_path)
     assert _scalar(db_path, "SELECT COUNT(id) FROM category") == 4
+
+
+def _columns(db_path: Path, table: str) -> list[str]:
+    with sqlite3.connect(db_path) as raw:
+        return [str(row[1]) for row in raw.execute(f"PRAGMA table_info({table})")]
+
+
+def test_migracao_0002_adiciona_e_remove_o_contexto_do_diario(tmp_path: Path) -> None:
+    db_path = tmp_path / "odc.db"
+    upgrade(db_path)
+    assert "context" in _columns(db_path, "journal")
+    engine = create_engine_for(db_path)
+    try:
+        with engine.connect() as connection:
+            config = migrate._config()
+            config.attributes["connection"] = connection
+            command.downgrade(config, "0001")
+            connection.commit()
+    finally:
+        engine.dispose()
+
+    assert "context" not in _columns(db_path, "journal")
+    upgrade(db_path)
+    assert "context" in _columns(db_path, "journal")
+    assert (tmp_path / "odc.db.bak-0001").is_file()

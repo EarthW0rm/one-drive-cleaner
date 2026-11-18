@@ -108,6 +108,20 @@ def set_state(session: Session, item_id: int, state: str, *, now: str) -> None:
         raise NotFoundError("item inexistente")
 
 
+def set_location(session: Session, item_id: int, *, parent_id: str, name: str, now: str) -> None:
+    """Pasta e nome atuais do item no OneDrive (após mover/restaurar pelo aplicativo)."""
+    if not parent_id or not name:
+        raise StorageValidationError("pasta e nome do item são obrigatórios")
+    result = execute_dml(
+        session,
+        update(item)
+        .where(item.c.id == item_id)
+        .values(parent_id=parent_id, name=name, updated_at=now),
+    )
+    if result.rowcount == 0:
+        raise NotFoundError("item inexistente")
+
+
 def list_ids_by_state(
     session: Session, state: str, *, limit: int, after_id: int = 0
 ) -> Sequence[int]:

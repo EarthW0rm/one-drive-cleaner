@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Gancho de startup que devolve à fila os jobs órfãos de uma queda anterior (plan 4.3)."""
+"""Ganchos de startup da fila: órfãos de uma queda anterior (plan 4.3) e reconciliação do diário."""
 
 import logging
 from collections.abc import Callable
@@ -53,3 +53,23 @@ class RequeueOrphansHook:
             metrics.record_job_resumed(type_=MetricsJobType(job_type.value))
         if requeued:
             logger.info("jobs órfãos reenfileirados", extra={"count": len(requeued)})
+
+
+class ReconcileStartupHook:
+    """`StartupHook`: enfileira `reconcile` quando o diário tem intenções sem resultado (RN-22).
+
+    O job roda antes das ações do utilizador (prioridade própria) e resolve as operações
+    interrompidas pelo estado real no OneDrive. Não crítico: se falhar, o app sobe e a
+    reconciliação fica para o próximo startup ou troca de conta.
+    """
+
+    name = "reconcile_journal"
+    critical = False
+
+    def __init__(self, *, clock: Callable[[], datetime] = utc_now) -> None:
+        self._clock = clock
+
+    def run(self, runtime: HookRuntime) -> None:
+        enqueued = JobQueue(runtime.database, clock=self._clock).enqueue_reconcile_if_pending()
+        if enqueued is not None and enqueued.created:
+            logger.info("reconciliação do diário enfileirada", extra={"job_id": enqueued.job_id})

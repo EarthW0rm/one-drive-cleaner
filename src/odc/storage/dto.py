@@ -129,6 +129,7 @@ class JournalRow:
     error_code: str | None
     created_at: str
     updated_at: str
+    context: str | None
 
 
 @dataclass(frozen=True, slots=True)

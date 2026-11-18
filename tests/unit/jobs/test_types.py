@@ -4,6 +4,7 @@ from odc.jobs.types import (
     DEDUPLICATED_TYPES,
     DEFAULT_PRIORITY,
     PIPELINE_PRIORITY,
+    RECONCILE_PRIORITY,
     USER_ACTION_PRIORITY,
     JobType,
     PauseReason,
@@ -35,5 +36,12 @@ def test_prioridades_do_plan() -> None:
     assert set(DEFAULT_PRIORITY) == set(JobType)
 
 
+def test_reconciliacao_passa_a_frente_das_acoes_do_utilizador() -> None:
+    assert DEFAULT_PRIORITY[JobType.RECONCILE] == RECONCILE_PRIORITY
+    assert max(p for t, p in DEFAULT_PRIORITY.items() if t is not JobType.RECONCILE) < (
+        RECONCILE_PRIORITY
+    )
+
+
 def test_tipos_deduplicados() -> None:
-    assert {JobType.SCAN, JobType.TRAIN} == DEDUPLICATED_TYPES
+    assert {JobType.SCAN, JobType.TRAIN, JobType.RECONCILE} == DEDUPLICATED_TYPES

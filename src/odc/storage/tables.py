@@ -276,6 +276,8 @@ journal = Table(
     Column("error_code", Text),
     Column("created_at", Text, nullable=False),
     Column("updated_at", Text, nullable=False),
+    # Contexto JSON da operação (modo, caminho original, motivo): migração 0002.
+    Column("context", Text),
     CheckConstraint(in_check("operation", JOURNAL_OPERATIONS), name="operation"),
     CheckConstraint(in_check("phase", JOURNAL_PHASES), name="phase"),
     Index("ix_journal_phase", "phase", "created_at"),

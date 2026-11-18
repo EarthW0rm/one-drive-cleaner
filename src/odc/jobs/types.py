@@ -28,6 +28,9 @@ class PauseReason(StrEnum):
 USER_ACTION_PRIORITY = 100
 PIPELINE_PRIORITY = 50
 BACKGROUND_PRIORITY = 10
+# A reconciliação do diário passa à frente de tudo: a retomada de `move`/`restore`/`delete`
+# precisa das intenções pendentes já resolvidas pelo estado real no OneDrive.
+RECONCILE_PRIORITY = 200
 
 # Ações do utilizador passam à frente do pipeline, que passa à frente do trabalho de fundo.
 DEFAULT_PRIORITY: Mapping[JobType, int] = {
@@ -40,9 +43,9 @@ DEFAULT_PRIORITY: Mapping[JobType, int] = {
     JobType.SCAN: BACKGROUND_PRIORITY,
     JobType.EXTRACT: BACKGROUND_PRIORITY,
     JobType.CLEANUP: BACKGROUND_PRIORITY,
-    # `reconcile` não está na tabela do plan 4.3; roda no startup e é curto: fica no fundo.
-    JobType.RECONCILE: BACKGROUND_PRIORITY,
+    # `reconcile` não está na tabela do plan 4.3; roda no startup/troca de conta e é curto.
+    JobType.RECONCILE: RECONCILE_PRIORITY,
 }
 
 # Tipos com no máximo um job ativo por vez (use `JobQueue.enqueue_unique`).
-DEDUPLICATED_TYPES: frozenset[JobType] = frozenset({JobType.SCAN, JobType.TRAIN})
+DEDUPLICATED_TYPES: frozenset[JobType] = frozenset({JobType.SCAN, JobType.TRAIN, JobType.RECONCILE})

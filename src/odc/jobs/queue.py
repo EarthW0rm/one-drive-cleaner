@@ -22,15 +22,20 @@ from odc.jobs.errors import ERROR_CODE_PATTERN, INVALID_PAYLOAD
 from odc.jobs.payloads import (
     MAX_EXTRACT_BATCH,
     PAYLOAD_MODELS,
+    ClassifyPayload,
+    DeletePayload,
     ExtractPayload,
+    MovePayload,
     Payload,
     PayloadError,
+    ReconcilePayload,
+    RestorePayload,
     parse_payload,
 )
 from odc.jobs.types import DEFAULT_PRIORITY, JobType, PauseReason
 from odc.storage.dto import JobRow
 from odc.storage.errors import StorageValidationError
-from odc.storage.repositories import jobs
+from odc.storage.repositories import jobs, journal
 from odc.storage.uow import UnitOfWork
 from odc.telemetry.metrics import JobResult, Metrics
 from odc.telemetry.metrics import JobType as MetricsJobType
@@ -39,6 +44,11 @@ from odc.telemetry.tracing import current_traceparent
 logger = logging.getLogger(__name__)
 
 STALE_AFTER_S = 120.0
+_ACTION_TYPES: Mapping[str, JobType] = {
+    "move": JobType.MOVE,
+    "restore": JobType.RESTORE,
+    "delete": JobType.DELETE,
+}
 _TRACEPARENT = re.compile(r"^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
 
 
@@ -236,6 +246,46 @@ class JobQueue:
             )
             for start in range(0, len(unique), MAX_EXTRACT_BATCH)
         ]
+
+    # --- Ações sobre a quarentena (reconciliação do diário) ---
+
+    def has_pending_action(self, operation: str, item_id: int) -> bool:
+        """Há job `move`/`restore`/`delete` ativo cujo payload inclui o item?"""
+        job_type = _ACTION_TYPES.get(operation)
+        if job_type is None:
+            return False
+        return any(
+            item_id in payload.item_ids
+            for payload in self.active_payloads(job_type)
+            if isinstance(payload, MovePayload | RestorePayload | DeletePayload)
+        )
+
+    def enqueue_move(self, item_ids: Sequence[int], mode: str) -> int:
+        """Enfileira `move(item_ids, mode)`; `mode` validado pelo payload (`manual`/`auto`)."""
+        return self.enqueue(
+            JobType.MOVE,
+            parse_payload(JobType.MOVE, {"item_ids": list(item_ids), "mode": mode}),
+        )
+
+    def enqueue_restore(self, item_ids: Sequence[int], reason: str) -> int:
+        """Enfileira `restore(item_ids, reason)`; `reason` validado pelo payload."""
+        return self.enqueue(
+            JobType.RESTORE,
+            parse_payload(JobType.RESTORE, {"item_ids": list(item_ids), "reason": reason}),
+        )
+
+    def enqueue_classify(self, item_ids: Sequence[int]) -> int:
+        """Enfileira `classify(scope=item_ids)` (reclassificação após restaurar)."""
+        payload = ClassifyPayload(scope="item_ids", item_ids=list(dict.fromkeys(item_ids)))
+        return self.enqueue(JobType.CLASSIFY, payload)
+
+    def enqueue_reconcile_if_pending(self) -> Enqueued | None:
+        """Enfileira `reconcile` (único) quando o diário tem intenções sem resultado."""
+        with UnitOfWork(self._database.engine, write=False) as session:
+            pending = journal.count_pending(session)
+        if pending == 0:
+            return None
+        return self.enqueue_unique(JobType.RECONCILE, ReconcilePayload())
 
     def get(self, job_id: int) -> JobRow | None:
         with UnitOfWork(self._database.engine, write=False) as session:

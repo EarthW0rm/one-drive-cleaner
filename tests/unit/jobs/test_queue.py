@@ -27,6 +27,7 @@ from odc.storage.engine import create_engine_for
 from odc.storage.errors import NotFoundError, StorageValidationError
 from odc.storage.migrate import upgrade
 from odc.storage.repositories import jobs as jobs_repo
+from odc.storage.repositories import journal as journal_repo
 from odc.storage.tables import job
 from odc.storage.uow import UnitOfWork
 from odc.telemetry.metrics import Metrics
@@ -738,3 +739,66 @@ def test_enqueue_extract_divide_em_lotes_de_64_sem_repetir(queue: JobQueue) -> N
 
 def test_enqueue_extract_sem_itens_nao_cria_job(queue: JobQueue) -> None:
     assert queue.enqueue_extract([]) == []
+
+
+def _intent(holder: EngineHolder, op_id: str = "op-1") -> None:
+    with UnitOfWork(holder.engine) as session:
+        journal_repo.begin(session, op_id=op_id, operation="ensure_folder", now="2026-11-18T00")
+
+
+def test_has_pending_action_ve_itens_de_jobs_ativos_por_operacao(queue: JobQueue) -> None:
+    queue.enqueue(JobType.MOVE, MovePayload(item_ids=[1, 2], mode="manual"))
+    done = queue.enqueue(JobType.DELETE, DeletePayload(item_ids=[3], confirmation_id="c"))
+    queue.claim_next()
+    queue.claim_next()
+    queue.complete(done)
+
+    assert queue.has_pending_action("move", 2) is True
+    assert queue.has_pending_action("move", 3) is False
+    assert queue.has_pending_action("restore", 1) is False
+    assert queue.has_pending_action("delete", 3) is False
+    assert queue.has_pending_action("ensure_folder", 1) is False
+
+
+def test_enfileira_acoes_da_reconciliacao_com_payload_validado(queue: JobQueue) -> None:
+    move = queue.enqueue_move([7], "manual")
+    restore = queue.enqueue_restore([8], "false_positive")
+    classify = queue.enqueue_classify([9, 9])
+
+    rows = {job_id: queue.get(job_id) for job_id in (move, restore, classify)}
+    assert [(r.type, json.loads(r.payload)) for r in rows.values() if r is not None] == [
+        ("move", {"item_ids": [7], "mode": "manual"}),
+        ("restore", {"item_ids": [8], "reason": "false_positive"}),
+        ("classify", {"scope": "item_ids", "item_ids": [9]}),
+    ]
+    assert rows[move].priority == 100  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    ("enqueue", "value"),
+    [(JobQueue.enqueue_move, "outro"), (JobQueue.enqueue_restore, "outro")],
+)
+def test_acoes_da_reconciliacao_recusam_valores_fora_do_dominio(
+    queue: JobQueue, enqueue: object, value: str
+) -> None:
+    with pytest.raises(PayloadError):
+        enqueue(queue, [1], value)  # type: ignore[operator]
+
+
+def test_reconcile_so_e_enfileirado_com_diario_pendente(
+    queue: JobQueue, holder: EngineHolder
+) -> None:
+    assert queue.enqueue_reconcile_if_pending() is None
+    _intent(holder, "op-1")
+    _intent(holder, "op-2")
+
+    first = queue.enqueue_reconcile_if_pending()
+    again = queue.enqueue_reconcile_if_pending()
+
+    assert first is not None
+    assert first.created is True
+    assert again is not None
+    assert (again.created, again.job_id) == (False, first.job_id)
+    row = queue.get(first.job_id)
+    assert row is not None
+    assert (row.type, row.priority) == ("reconcile", 200)

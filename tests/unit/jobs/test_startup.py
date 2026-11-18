@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+import logging
 from types import SimpleNamespace
 from typing import cast
 
@@ -9,8 +10,10 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from odc.bootstrap import Runtime, StartupHook
 from odc.jobs.payloads import ExtractPayload, ScanPayload
 from odc.jobs.queue import JobQueue
-from odc.jobs.startup import HookRuntime, RequeueOrphansHook
+from odc.jobs.startup import HookRuntime, ReconcileStartupHook, RequeueOrphansHook
 from odc.jobs.types import JobType
+from odc.storage.repositories import jobs, journal
+from odc.storage.uow import UnitOfWork
 from odc.telemetry.metrics import Metrics
 from tests.unit.jobs.conftest import EngineHolder, FakeClock
 
@@ -132,3 +135,40 @@ def test_limite_de_heartbeat_e_configuravel(
     RequeueOrphansHook(stale_after_s=10, clock=clock, metrics=metrics).run(_runtime(holder))
 
     assert queue.get(job_id).status == "queued"  # type: ignore[union-attr]
+
+
+def _pending_intent(holder: EngineHolder) -> None:
+    with UnitOfWork(holder.engine) as session:
+        journal.begin(session, op_id="op-1", operation="ensure_folder", now="2026-11-18T00")
+
+
+def _queued(holder: EngineHolder) -> list[tuple[str, int]]:
+    with UnitOfWork(holder.engine, write=False) as session:
+        return [(r.type, r.priority) for r in jobs.list_by_status(session, "queued", limit=10)]
+
+
+def test_gancho_de_reconciliacao_e_nao_critico() -> None:
+    hooks: list[StartupHook] = [ReconcileStartupHook()]
+
+    assert (hooks[0].name, hooks[0].critical) == ("reconcile_journal", False)
+
+
+def test_gancho_enfileira_reconciliacao_com_diario_pendente_uma_unica_vez(
+    holder: EngineHolder, clock: FakeClock, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="odc.jobs.startup")
+    _pending_intent(holder)
+    hook = ReconcileStartupHook(clock=clock)
+
+    hook.run(_runtime(holder))
+    hook.run(_runtime(holder))
+
+    assert _queued(holder) == [("reconcile", 200)]
+    messages = [r.message for r in caplog.records if r.name == "odc.jobs.startup"]
+    assert messages == ["reconciliação do diário enfileirada"]
+
+
+def test_gancho_nao_enfileira_reconciliacao_sem_diario_pendente(holder: EngineHolder) -> None:
+    ReconcileStartupHook().run(_runtime(holder))
+
+    assert _queued(holder) == []

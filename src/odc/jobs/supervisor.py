@@ -3,8 +3,9 @@
 
 O runner só roda com conta ativa (o banco local anterior ao login não tem jobs). Trocar de conta
 para o runner no banco antigo (os jobs em execução voltam à fila), troca o banco, devolve à fila
-os órfãos do banco novo, retoma os pausados por `login_required` e reinicia o runner. Um novo
-login na mesma conta não interrompe nada: só retoma os pausados por `login_required`.
+os órfãos do banco novo, enfileira a reconciliação do diário (se pendente), retoma os
+pausados por `login_required` e reinicia o runner. Um novo login na mesma conta não interrompe
+nada: só retoma os pausados por `login_required`.
 """
 
 import asyncio
@@ -87,6 +88,7 @@ class JobSupervisor:
                     await self._launch()
                     raise
                 await self._requeue_orphans()
+                await self._enqueue_reconcile()
             try:
                 await self._resumer.on_login_completed()
             except Exception as error:
@@ -125,6 +127,16 @@ class JobSupervisor:
     async def _halt(self) -> None:
         await self._resumer.stop()
         await self._runner.stop()
+
+    async def _enqueue_reconcile(self) -> None:
+        """Banco da conta recém-ativado: operações interrompidas são reconciliadas primeiro."""
+        try:
+            await asyncio.to_thread(self._queue.enqueue_reconcile_if_pending)
+        except Exception as error:
+            logger.error(
+                "enfileirar reconciliação após login falhou",
+                extra={"error_type": type(error).__name__},
+            )
 
     async def _requeue_orphans(self) -> None:
         try:

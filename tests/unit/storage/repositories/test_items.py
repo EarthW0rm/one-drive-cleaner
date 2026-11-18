@@ -82,6 +82,31 @@ def test_set_state_valida_estado_e_existencia(session: Session, root: ScanRootRo
         items.set_state(session, 999, "ANALISADO", now=NOW)
 
 
+def test_set_location_atualiza_pasta_e_nome(session: Session, root: ScanRootRow) -> None:
+    created = items.upsert_from_delta(session, _delta(root), now=NOW)
+
+    items.set_location(session, created.id, parent_id="pasta-2", name="novo.jpg", now=LATER)
+
+    found = items.get(session, created.id)
+    assert found is not None
+    assert (found.parent_id, found.name, found.updated_at) == ("pasta-2", "novo.jpg", LATER)
+
+
+@pytest.mark.parametrize(("parent_id", "name"), [("", "a.jpg"), ("p", "")])
+def test_set_location_exige_pasta_e_nome(
+    session: Session, root: ScanRootRow, parent_id: str, name: str
+) -> None:
+    created = items.upsert_from_delta(session, _delta(root), now=NOW)
+
+    with pytest.raises(StorageValidationError):
+        items.set_location(session, created.id, parent_id=parent_id, name=name, now=NOW)
+
+
+def test_set_location_de_item_inexistente(session: Session) -> None:
+    with pytest.raises(NotFoundError):
+        items.set_location(session, 999, parent_id="p", name="a.jpg", now=NOW)
+
+
 def test_list_ids_by_state_pagina_por_cursor(session: Session, make_item: ItemFactory) -> None:
     ids = [make_item("ANALISADO").id for _ in range(5)]
     make_item("DESCOBERTO")

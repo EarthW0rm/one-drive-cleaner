@@ -10,7 +10,7 @@ from odc.bootstrap import EXIT_FAILURE, BootstrapError, bootstrap, run
 from odc.cleanup.handler import CleanupStartupHook
 from odc.config import ConfigError, load_settings
 from odc.jobs.factories import HANDLER_FACTORIES
-from odc.jobs.startup import RequeueOrphansHook
+from odc.jobs.startup import ReconcileStartupHook, RequeueOrphansHook
 from odc.telemetry.logging import configure_logging
 
 PACKAGE_NAME = "onedrive-cleaner"
@@ -56,7 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         runtime = bootstrap(
             settings,
-            hooks=(CleanupStartupHook(), RequeueOrphansHook()),
+            hooks=(CleanupStartupHook(), RequeueOrphansHook(), ReconcileStartupHook()),
             handler_factories=HANDLER_FACTORIES,
         )
         return run(runtime, open_browser=settings.open_browser)

@@ -7,9 +7,11 @@ import pytest
 
 from odc import cli
 from odc.bootstrap import EXIT_FAILURE, EXIT_PORT_IN_USE, BootstrapError, Runtime
+from odc.cleanup.handler import CleanupStartupHook
 from odc.config import AppSettings, ConfigError
 from odc.config import load_settings as real_load_settings
 from odc.jobs.factories import HANDLER_FACTORIES
+from odc.jobs.startup import ReconcileStartupHook, RequeueOrphansHook
 from odc.jobs.types import JobType
 
 # `bootstrap` e `run` são substituídos nos testes: o Runtime nunca é usado de fato.
@@ -36,6 +38,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         settings: AppSettings, hooks: object = (), *, handler_factories: object = None
     ) -> Runtime:
         recorded["handler_factories"] = handler_factories
+        recorded["hooks"] = hooks
         return RUNTIME_STUB
 
     def fake_run(runtime: Runtime, *, open_browser: bool) -> int:
@@ -46,6 +49,18 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
     monkeypatch.setattr(cli, "run", fake_run)
     return recorded
+
+
+def test_registra_ganchos_de_startup_na_ordem(calls: dict[str, object]) -> None:
+    cli.main([])
+
+    hooks = calls["hooks"]
+    assert isinstance(hooks, tuple)
+    assert [type(hook) for hook in hooks] == [
+        CleanupStartupHook,
+        RequeueOrphansHook,
+        ReconcileStartupHook,
+    ]
 
 
 def test_version_imprime_versao_e_sai_com_zero(capsys: pytest.CaptureFixture[str]) -> None:

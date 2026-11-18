@@ -18,6 +18,8 @@ from odc.jobs.supervisor import JobSupervisor
 from odc.jobs.types import JobType, PauseReason
 from odc.storage.engine import create_engine_for
 from odc.storage.migrate import upgrade
+from odc.storage.repositories import jobs, journal
+from odc.storage.uow import UnitOfWork
 from tests.unit.jobs.conftest import EngineHolder, FakeClock
 from tests.unit.jobs.support import ScriptedHandler, Telemetry, handler, wait_until
 
@@ -99,6 +101,11 @@ def _queue_of(database: FakeDatabase, account_key: str) -> JobQueue:
     return JobQueue(EngineHolder(database.engines[account_key]))
 
 
+def _queued_types(database: FakeDatabase, account_key: str) -> list[str]:
+    with UnitOfWork(database.engines[account_key], write=False) as session:
+        return [row.type for row in jobs.list_by_status(session, "queued", limit=10)]
+
+
 def _status(queue: JobQueue, job_id: int) -> str:
     row = queue.get(job_id)
     assert row is not None
@@ -169,6 +176,27 @@ async def test_login_na_mesma_conta_nao_interrompe_e_retoma_login_required(rig: 
     assert _status(rig.queue, waiting) == "queued"
     rig.gate.set()
     await wait_until(lambda: _status(rig.queue, waiting) == "done")
+
+
+@pytest.mark.asyncio
+async def test_login_em_outra_conta_com_diario_pendente_enfileira_reconciliacao(
+    rig: Rig,
+) -> None:
+    with UnitOfWork(rig.database.engines[ACCOUNT_A]) as session:
+        journal.begin(session, op_id="op-1", operation="ensure_folder", now="2026-11-18T00:00")
+
+    await rig.supervisor.activate_account(ACCOUNT_A, "drive-a")
+
+    assert _queued_types(rig.database, ACCOUNT_A) == ["reconcile"]
+
+
+@pytest.mark.asyncio
+async def test_login_em_outra_conta_sem_diario_pendente_nao_enfileira_reconciliacao(
+    rig: Rig,
+) -> None:
+    await rig.supervisor.activate_account(ACCOUNT_A, "drive-a")
+
+    assert _queued_types(rig.database, ACCOUNT_A) == []
 
 
 @pytest.mark.asyncio
@@ -255,6 +283,9 @@ class _BrokenQueue(JobQueue):
     def resume(self, *, job_id: int | None = None, reason: PauseReason | None = None) -> int:
         raise RuntimeError("banco indisponível")
 
+    def enqueue_reconcile_if_pending(self) -> None:
+        raise RuntimeError("banco indisponível")
+
 
 @pytest.mark.asyncio
 async def test_falhas_de_preparo_apos_login_sao_logadas_e_o_runner_sobe(
@@ -272,5 +303,6 @@ async def test_falhas_de_preparo_apos_login_sao_logadas_e_o_runner_sobe(
     await supervisor.stop()
     assert [r.message for r in caplog.records if r.name == "odc.jobs.supervisor"] == [
         "reenfileirar órfãos após login falhou",
+        "enfileirar reconciliação após login falhou",
         "retomada após login falhou",
     ]

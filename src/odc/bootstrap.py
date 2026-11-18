@@ -40,6 +40,7 @@ from odc.jobs.runner import JobRunner
 from odc.jobs.supervisor import JobSupervisor
 from odc.jobs.types import JobType
 from odc.quarantine.folders import AppFolders
+from odc.quarantine.journal import JournalPendingSource
 from odc.scanning.scanner import ScanLastSuccessSource
 from odc.storage.account_db import AccountDatabase
 from odc.storage.migrate import MigrationError
@@ -212,6 +213,7 @@ def _register_observables(telemetry: TelemetryHandle, database: AccountDatabase)
     registry = ObservableRegistry(telemetry.meter_provider)
     registry.register(ObservableName.SCAN_LAST_SUCCESS, ScanLastSuccessSource(database))
     registry.register(ObservableName.DISK_USAGE, DiskUsageSource(CleanupService(database)))
+    registry.register(ObservableName.JOURNAL_PENDING, JournalPendingSource(database))
 
 
 def _job_supervisor(  # noqa: PLR0913 - composição do runner com as dependências do bootstrap
