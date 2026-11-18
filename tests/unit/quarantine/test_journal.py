@@ -291,6 +291,67 @@ async def test_failed_com_codigo_fora_do_formato_nao_grava(
 
 
 @pytest.mark.asyncio
+async def test_rejected_grava_intencao_e_falha_na_mesma_transacao(
+    db: Database, jr: Journal, item: ItemRow
+) -> None:
+    op_id = await jr.rejected(
+        Operation.RESTORE,
+        item.id,
+        "NOT_IN_QUARANTINE",
+        from_parent=QUARANTINE,
+        to_parent=ORIGIN,
+        context=RestoreContext(reason="manual"),
+    )
+
+    row = journal_row(db, op_id)
+    assert (row.operation, row.phase, row.error_code) == ("restore", "failed", "NOT_IN_QUARANTINE")
+    assert journal_row(db, op_id).context == RestoreContext(reason="manual").model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_rejected_com_op_id_ja_encerrado_e_recusado(db: Database, item: ItemRow) -> None:
+    fixed = Journal(db, clock=Clock(), op_ids=lambda: "op-fixo")
+    context = RestoreContext(reason="manual")
+    await fixed.rejected(
+        Operation.RESTORE,
+        item.id,
+        "X_ERRO",
+        from_parent=QUARANTINE,
+        to_parent=ORIGIN,
+        context=context,
+    )
+
+    with pytest.raises(JournalStateError):
+        await fixed.rejected(
+            Operation.RESTORE,
+            item.id,
+            "X_ERRO",
+            from_parent=QUARANTINE,
+            to_parent=ORIGIN,
+            context=context,
+        )
+
+
+@pytest.mark.asyncio
+async def test_rejected_com_registro_ou_codigo_invalido_nao_grava(
+    db: Database, jr: Journal, item: ItemRow
+) -> None:
+    with pytest.raises(JournalRecordError):
+        await jr.rejected(Operation.RESTORE, item.id, "NOT_IN_QUARANTINE")
+    with pytest.raises(ValueError, match="error_code"):
+        await jr.rejected(
+            Operation.RESTORE,
+            item.id,
+            "nome do arquivo.jpg",
+            from_parent=QUARANTINE,
+            to_parent=ORIGIN,
+            context=RestoreContext(reason="manual"),
+        )
+
+    assert journal_count(db) == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("status", "reason", "fallback", "field_values"),
     [

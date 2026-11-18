@@ -320,6 +320,29 @@ class Journal:
         await asyncio.to_thread(self._write_intent, op_id, record)
         return op_id
 
+    async def rejected(  # noqa: PLR0913 - campos do registro de intenção (plan 3.1)
+        self,
+        operation: Operation,
+        item_id: int | None,
+        error_code: str,
+        *,
+        from_parent: str | None = None,
+        to_parent: str | None = None,
+        from_name: str | None = None,
+        to_name: str | None = None,
+        context: OperationContext | None = None,
+    ) -> str:
+        """Registra pedido recusado antes de qualquer chamada à Graph: intenção e `failed` na
+        mesma transação (nunca deixa intenção pendente). Devolve o `op_id`."""
+        code = checked_error_code(error_code)
+        record = _Intent(
+            Operation(operation), item_id, from_parent, to_parent, from_name, to_name, context
+        )
+        record.validate()
+        op_id = self._op_ids()
+        await asyncio.to_thread(self._write_rejected, op_id, record, code)
+        return op_id
+
     async def done(self, op_id: str, effects: Sequence[Effect] = ()) -> None:
         """Resultado `done` + efeitos na mesma transação (tudo ou nada)."""
         await asyncio.to_thread(self._finish, op_id, "done", None, tuple(effects))
@@ -333,20 +356,31 @@ class Journal:
         return stamp(self._clock())
 
     def _write_intent(self, op_id: str, record: _Intent) -> None:
-        context = None if record.context is None else record.context.model_dump_json()
         with UnitOfWork(self._database.engine) as session:
-            journal.begin(
-                session,
-                op_id=op_id,
-                operation=record.operation.value,
-                now=self._now(),
-                item_id=record.item_id,
-                from_parent_id=record.from_parent,
-                to_parent_id=record.to_parent,
-                from_name=record.from_name,
-                to_name=record.to_name,
-                context=context,
-            )
+            self._begin(session, op_id, record, self._now())
+
+    def _write_rejected(self, op_id: str, record: _Intent, error_code: str) -> None:
+        now = self._now()
+        with UnitOfWork(self._database.engine) as session:
+            self._begin(session, op_id, record, now)
+            if not journal.finish(session, op_id, "failed", now=now, error_code=error_code):
+                raise JournalStateError("operação inexistente ou já encerrada")
+
+    @staticmethod
+    def _begin(session: Session, op_id: str, record: _Intent, now: str) -> None:
+        context = None if record.context is None else record.context.model_dump_json()
+        journal.begin(
+            session,
+            op_id=op_id,
+            operation=record.operation.value,
+            now=now,
+            item_id=record.item_id,
+            from_parent_id=record.from_parent,
+            to_parent_id=record.to_parent,
+            from_name=record.from_name,
+            to_name=record.to_name,
+            context=context,
+        )
 
     def _finish(
         self, op_id: str, phase: str, error_code: str | None, effects: tuple[Effect, ...]

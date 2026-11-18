@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import numpy as np
 from sqlalchemy import func, select
 
-from odc.graph.errors import GraphConflict, GraphNotFound
+from odc.graph.errors import GraphClientError, GraphConflict, GraphNotFound
 from odc.graph.models import DriveItem, ParentReference
 from odc.quarantine.folders import AppFolderIds
 from odc.storage.dto import ItemRow, JournalRow, QuarantineEntryRow
@@ -26,7 +26,7 @@ from odc.storage.tables import embedding_model, quarantine_entry
 from odc.storage.tables import journal as journal_table
 from odc.storage.tables import prediction as prediction_table
 from odc.storage.uow import UnitOfWork
-from tests.unit.scanning.support import BASE, Database
+from tests.unit.scanning.support import BASE, Database, stamp
 
 ORIGIN = "FAKE-ORIGIN"
 QUARANTINE = "FAKE-QUARANTINE"
@@ -277,3 +277,115 @@ def has_analysis(db: Database, item_id: int) -> tuple[bool, bool, bool]:
             predictions.get_by_item(session, item_id) is not None,
             item_id in labels.current_by_item(session, [item_id]),
         )
+
+
+def quarantined(  # noqa: PLR0913 - cenário completo de um item na quarentena
+    db: Database,
+    item_id: int,
+    *,
+    parent_id: str = ORIGIN,
+    path: str = "/Pictures/Camera Roll",
+    name: str = "img.jpg",
+    quarantined_name: str | None = None,
+    mode: str = "manual",
+) -> None:
+    """Item na quarentena com a origem registrada (entrada `active`, estado e localização)."""
+    now = stamp(BASE)
+    in_quarantine = quarantined_name or name
+    with UnitOfWork(db.engine) as session:
+        quarantine.create(
+            session,
+            item_id=item_id,
+            original_parent_id=parent_id,
+            original_parent_path=path,
+            original_name=name,
+            quarantined_name=in_quarantine,
+            mode=mode,
+            now=now,
+        )
+        items.set_state(session, item_id, "QUARENTENA", now=now)
+        items.set_location(session, item_id, parent_id=QUARANTINE, name=in_quarantine, now=now)
+
+
+def journal_rows(db: Database, item_id: int) -> list[JournalRow]:
+    """Entradas do diário do item, na ordem de registro."""
+    with UnitOfWork(db.engine, write=False) as session:
+        op_ids = session.execute(
+            select(journal_table.c.op_id)
+            .where(journal_table.c.item_id == item_id)
+            .order_by(journal_table.c.id)
+        ).scalars()
+        rows = [journal.get_by_op_id(session, str(op_id)) for op_id in op_ids]
+    return [row for row in rows if row is not None]
+
+
+def folder(folder_id: str) -> DriveItem:
+    return DriveItem.model_validate({"id": folder_id, "name": "pasta", "folder": {"childCount": 0}})
+
+
+@dataclass
+class RestoreGraphFake:
+    """Graph roteirizada para a restauração: itens, pastas, nomes ocupados e criação de pastas."""
+
+    remote: dict[str, DriveItem | BaseException | None] = field(default_factory=dict)
+    folders: set[str] = field(default_factory=set)
+    taken: set[tuple[str, str]] = field(default_factory=set)
+    created: dict[tuple[str, str], str] = field(default_factory=dict)
+    ensure_errors: dict[str, BaseException] = field(default_factory=dict)
+    move_errors: dict[str, BaseException] = field(default_factory=dict)
+    vanish_on_move: set[str] = field(default_factory=set)
+    conflicts: dict[str, int] = field(default_factory=dict)
+    moves: list[tuple[str, str, str | None]] = field(default_factory=list)
+    ensured: list[tuple[str, str]] = field(default_factory=list)
+    counter: int = 0
+
+    async def get_item(self, item_id: str) -> DriveItem:
+        if item_id in self.folders:
+            return folder(item_id)
+        found = self.remote.get(item_id)
+        if found is None:
+            raise GraphNotFound(404, "itemNotFound")
+        if isinstance(found, BaseException):
+            raise found
+        return found
+
+    async def move(self, item_id: str, parent_id: str, name: str | None = None) -> DriveItem:
+        self.moves.append((item_id, parent_id, name))
+        error = self.move_errors.get(item_id)
+        if error is not None:
+            raise error
+        if item_id in self.vanish_on_move:
+            self.remote.pop(item_id, None)
+            raise GraphNotFound(404, "itemNotFound")
+        current = self.remote.get(item_id)
+        if parent_id not in self.folders or not isinstance(current, DriveItem):
+            raise GraphNotFound(404, "itemNotFound")
+        if self.conflicts.get(item_id, 0) > 0:
+            self.conflicts[item_id] -= 1
+            raise GraphConflict(409, "nameAlreadyExists")
+        if (parent_id, name or current.name) in self.taken:
+            raise GraphConflict(409, "nameAlreadyExists")
+        moved = current.model_copy(
+            update={"name": name or current.name, "parent_reference": ParentReference(id=parent_id)}
+        )
+        self.remote[item_id] = moved
+        return moved
+
+    async def ensure_folder(self, parent_id: str, name: str) -> str:
+        self.ensured.append((parent_id, name))
+        error = self.ensure_errors.get(name)
+        if error is not None:
+            raise error
+        if parent_id != "root" and parent_id not in self.folders:
+            raise GraphNotFound(404, "itemNotFound")
+        known = self.created.get((parent_id, name))
+        if known is None:
+            self.counter += 1
+            known = f"FAKE-NEW-{self.counter}"
+            self.created[(parent_id, name)] = known
+            self.folders.add(known)
+        return known
+
+
+def forbidden() -> GraphClientError:
+    return GraphClientError(403, "accessDenied")

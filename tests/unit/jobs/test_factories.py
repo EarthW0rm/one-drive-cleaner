@@ -11,6 +11,7 @@ from odc.jobs.factories import (
     cleanup_handler,
     move_handler,
     reconcile_handler,
+    restore_handler,
     scan_handler,
 )
 from odc.jobs.handler import HandlerDeps
@@ -18,6 +19,7 @@ from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler
+from odc.quarantine.restore import RestoreHandler
 from odc.scanning.scanner import ScanHandler
 from tests.unit.jobs.conftest import EngineHolder
 
@@ -111,3 +113,25 @@ def test_fabrica_de_move_monta_o_handler_com_a_graph(
 
 def test_registro_padrao_inclui_o_mover() -> None:
     assert HANDLER_FACTORIES[JobType.MOVE] is move_handler
+
+
+def test_fabrica_de_restore_exige_cliente_da_graph(deps_without_graph: HandlerDeps) -> None:
+    assert restore_handler(deps_without_graph) is None
+
+
+def test_fabrica_de_restore_monta_o_handler_com_a_graph(
+    deps_without_graph: HandlerDeps, graph: GraphClient
+) -> None:
+    deps = HandlerDeps(
+        database=deps_without_graph.database,
+        queue=deps_without_graph.queue,
+        graph=graph,
+        metrics=None,
+        tracer=None,
+    )
+
+    assert isinstance(restore_handler(deps), RestoreHandler)
+
+
+def test_registro_padrao_inclui_a_restauracao() -> None:
+    assert HANDLER_FACTORIES[JobType.RESTORE] is restore_handler

@@ -16,6 +16,7 @@ from odc.jobs.types import JobType
 from odc.quarantine.folders import AppFolders
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler, Reconciler
+from odc.quarantine.restore import RestoreHandler
 from odc.scanning.scanner import ScanHandler
 
 
@@ -58,11 +59,29 @@ def move_handler(deps: HandlerDeps) -> Handler | None:
     )
 
 
+def restore_handler(deps: HandlerDeps) -> Handler | None:
+    """`RestoreHandler` (worker de ações): pastas e diário em dia; reclassifica após restaurar."""
+    if deps.graph is None:
+        return None
+    folders = AppFolders(deps.database, deps.graph)
+    reconciler = _reconciler(deps, deps.graph, folders)
+    return RestoreHandler(
+        deps.database,
+        deps.graph,
+        folders,
+        reconciler,
+        deps.queue,
+        metrics=deps.metrics,
+        tracer=deps.tracer,
+    )
+
+
 HANDLER_FACTORIES: Mapping[JobType, HandlerFactory] = {
     JobType.SCAN: scan_handler,
     JobType.CLEANUP: cleanup_handler,
     JobType.RECONCILE: reconcile_handler,
     JobType.MOVE: move_handler,
+    JobType.RESTORE: restore_handler,
 }
 
 
@@ -71,5 +90,6 @@ __all__ = [
     "cleanup_handler",
     "move_handler",
     "reconcile_handler",
+    "restore_handler",
     "scan_handler",
 ]
