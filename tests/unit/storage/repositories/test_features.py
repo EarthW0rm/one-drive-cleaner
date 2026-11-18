@@ -196,3 +196,34 @@ def test_delete_for_items_remove_somente_os_itens_pedidos(
 
 def test_delete_for_items_sem_ids_nao_remove_nada(session: Session) -> None:
     assert features.delete_for_items(session, []) == 0
+
+
+def test_meta_versions_por_item_ignora_ausentes_e_outro_modelo(
+    session: Session, make_item: ItemFactory, model_id: int
+) -> None:
+    session.execute(
+        text(
+            "INSERT INTO embedding_model (id, name, dim, thumb_size, is_active) "
+            "VALUES (2, 'other', :dim, 'c384x384', 0)"
+        ),
+        {"dim": DIM},
+    )
+    a, b, c = (make_item("DESCOBERTO").id for _ in range(3))
+    old = FeatureInput(a, model_id, np.zeros(DIM, np.float32), np.zeros(2, np.float32), 1, "c1")
+    new = FeatureInput(b, model_id, np.zeros(DIM, np.float32), np.zeros(2, np.float32), 2, "c1")
+    other = FeatureInput(c, 2, np.zeros(DIM, np.float32), np.zeros(2, np.float32), 1, "c1")
+    features.save_batch(session, [old, new, other], now=NOW)
+
+    found = features.meta_versions(session, model_id, [a, b, c, 9999])
+
+    assert found == {a: 1, b: 2}
+
+
+def test_meta_versions_vazio_e_em_blocos(
+    session: Session, make_item: ItemFactory, model_id: int
+) -> None:
+    item_id = make_item("DESCOBERTO").id
+    features.save_batch(session, [_input(item_id, model_id, 0.1)], now=NOW)
+
+    assert features.meta_versions(session, model_id, []) == {}
+    assert features.meta_versions(session, model_id, [item_id] * 1200) == {item_id: 1}

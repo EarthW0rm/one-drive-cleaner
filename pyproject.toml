@@ -30,6 +30,7 @@ dependencies = [
     "pillow-heif>=1.8.1",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
+    "scikit-learn>=1.9.1",
     "sqlalchemy>=2",
     "starlette>=1.10.0",
     "torch>=2.15.0",
@@ -59,15 +60,8 @@ dev = [
     "pyyaml",
     "respx",
     "ruff",
-    "scikit-learn>=1.9.1",
     "types-pyyaml",
     "vulture",
-]
-# Spike de benchmark (TF-150): `uv sync --group ml`. torch, open-clip-torch e pillow são
-# dependências de runtime (embedder de produção, TF-151-02), assim como pillow-heif (decodificação
-# HEIC, TF-151-04); o grupo guarda só o que o spike acrescenta.
-ml = [
-    "scikit-learn>=1.9.1",
 ]
 
 [tool.ruff]
@@ -105,7 +99,7 @@ module = ["msal", "msal.*", "msal_extensions", "msal_extensions.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# scikit-learn não distribui py.typed; o uso fica restrito ao spike de benchmark.
+# scikit-learn não distribui py.typed; o uso em produção fica em odc.ml.trainer (treino local).
 module = ["sklearn", "sklearn.*"]
 ignore_missing_imports = true
 

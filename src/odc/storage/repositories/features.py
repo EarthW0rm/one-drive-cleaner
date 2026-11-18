@@ -119,6 +119,20 @@ def load_matrix(
     return FeatureMatrix(ids, embeddings, meta.copy())
 
 
+def meta_versions(
+    session: Session, embedding_model_id: int, item_ids: Sequence[int]
+) -> dict[int, int]:
+    """`meta_version` por item que tem features do modelo (itens sem features ficam de fora)."""
+    found: dict[int, int] = {}
+    for start in range(0, len(item_ids), _CHUNK):
+        chunk = item_ids[start : start + _CHUNK]
+        stmt = select(feature.c.item_id, feature.c.meta_version).where(
+            feature.c.embedding_model_id == embedding_model_id, feature.c.item_id.in_(chunk)
+        )
+        found.update((int(row[0]), int(row[1])) for row in session.execute(stmt))
+    return found
+
+
 def get(session: Session, item_id: int) -> FeatureRow | None:
     """Metadados da extração (sem os blobs)."""
     row = session.execute(select(*_META_COLUMNS).where(feature.c.item_id == item_id)).first()

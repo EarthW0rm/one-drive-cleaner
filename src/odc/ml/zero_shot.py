@@ -18,7 +18,7 @@ import numpy.typing as npt
 from sqlalchemy.orm import Session
 
 from odc.features.embedder import Embedder
-from odc.ml.types import Prediction
+from odc.ml.types import Prediction, predictions_from_probabilities
 from odc.storage.dto import CategoryRow, ModelVersionRow
 from odc.storage.repositories import models as model_repo
 
@@ -108,21 +108,7 @@ class ZeroShotClassifier:
     ) -> list[Prediction]:
         """Uma `Prediction` por linha: top-1, confiança e margem `p1 - p2`."""
         ids, probs = self.predict(embeddings)
-        results: list[Prediction] = []
-        for row in probs:
-            if len(ids) == 1:
-                results.append(Prediction(int(ids[0]), 1.0, 1.0))
-                continue
-            order = np.argsort(row)[::-1]
-            first, second = float(row[order[0]]), float(row[order[1]])
-            results.append(
-                Prediction(
-                    int(ids[order[0]]),
-                    min(1.0, max(0.0, first)),
-                    min(1.0, max(0.0, first - second)),
-                )
-            )
-        return results
+        return predictions_from_probabilities(ids, probs)
 
     @staticmethod
     def should_bootstrap(label_counts: Mapping[int, int]) -> bool:

@@ -166,6 +166,17 @@ def get_many_by_drive_ids(session: Session, drive_item_ids: Sequence[str]) -> di
     return found
 
 
+def drive_ids_by_id(session: Session, item_ids: Sequence[int]) -> dict[int, str]:
+    """`drive_item_id` por id interno (consulta em blocos; ids ausentes ficam de fora)."""
+    found: dict[int, str] = {}
+    unique = list(dict.fromkeys(item_ids))
+    for start in range(0, len(unique), _CHUNK):
+        chunk = unique[start : start + _CHUNK]
+        stmt = select(item.c.id, item.c.drive_item_id).where(item.c.id.in_(chunk))
+        found.update((int(row[0]), str(row[1])) for row in session.execute(stmt))
+    return found
+
+
 def list_ids_in_roots(
     session: Session,
     scan_root_ids: Sequence[int],

@@ -193,6 +193,24 @@ def test_get_many_by_drive_ids_vazio(session: Session) -> None:
     assert items.get_many_by_drive_ids(session, []) == {}
 
 
+def test_drive_ids_by_id_ignora_ausentes_e_repetidos(
+    session: Session, make_item: ItemFactory
+) -> None:
+    a, b = make_item("DESCOBERTO"), make_item("ANALISADO")
+
+    found = items.drive_ids_by_id(session, [a.id, 9999, a.id, b.id])
+
+    assert found == {a.id: a.drive_item_id, b.id: b.drive_item_id}
+
+
+def test_drive_ids_by_id_vazio_e_em_blocos(session: Session, make_item: ItemFactory) -> None:
+    created = [make_item("DESCOBERTO") for _ in range(3)]
+    ids = [row.id for row in created]
+
+    assert items.drive_ids_by_id(session, []) == {}
+    assert len(items.drive_ids_by_id(session, ids * 400)) == 3
+
+
 def test_list_ids_in_roots_filtra_raiz_estado_e_instante(
     session: Session, root: ScanRootRow, make_item: ItemFactory
 ) -> None:
