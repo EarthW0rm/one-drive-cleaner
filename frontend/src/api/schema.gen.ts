@@ -159,6 +159,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings"];
+        /** Update Settings */
+        put: operations["update_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/callback": {
         parameters: {
             query?: never;
@@ -393,6 +411,44 @@ export interface components {
         SetScanRootsRequest: {
             /** Folder Ids */
             folder_ids: string[];
+        };
+        /**
+         * SettingsPatch
+         * @description Alteração parcial: só os campos enviados são gravados; `null` é recusado.
+         */
+        SettingsPatch: {
+            /** Auto Threshold */
+            auto_threshold?: number | null;
+            /** Automation Mode */
+            automation_mode?: ("manual" | "auto" | "evolutive") | null;
+            /** Otel Enabled */
+            otel_enabled?: boolean | null;
+            /** Otel Endpoint */
+            otel_endpoint?: string | null;
+            /** Retrain Every */
+            retrain_every?: number | null;
+            /** Temp Cap Bytes */
+            temp_cap_bytes?: number | null;
+        };
+        /** SettingsResponse */
+        SettingsResponse: {
+            /** Auto Threshold */
+            auto_threshold: number;
+            /**
+             * Automation Mode
+             * @enum {string}
+             */
+            automation_mode: "manual" | "auto" | "evolutive";
+            /** Otel Enabled */
+            otel_enabled: boolean;
+            /** Otel Endpoint */
+            otel_endpoint: string | null;
+            /** Restart Required */
+            restart_required: boolean;
+            /** Retrain Every */
+            retrain_every: number;
+            /** Temp Cap Bytes */
+            temp_cap_bytes: number;
         };
     };
     responses: never;
@@ -1127,6 +1183,122 @@ export interface operations {
                 };
             };
             /** @description Requisição inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requisição inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Valor fora da faixa ou campo não permitido */
             422: {
                 headers: {
                     [name: string]: unknown;

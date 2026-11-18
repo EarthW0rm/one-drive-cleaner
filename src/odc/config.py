@@ -31,6 +31,21 @@ class ConfigError(Exception):
     """Configuração inválida; a mensagem indica o arquivo ou o campo afetado."""
 
 
+def require_loopback_endpoint(value: str) -> str:
+    """Telemetria nunca sai da máquina (RN-24): só endpoints `http(s)` de loopback."""
+    try:
+        parts = urlsplit(value)
+        hostname = parts.hostname
+        parts.port  # noqa: B018 - valida a porta (ValueError se inválida)
+    except ValueError as exc:
+        message = "otel_endpoint deve ser uma URL válida de loopback"
+        raise ValueError(message) from exc
+    if parts.scheme not in {"http", "https"} or hostname not in LOOPBACK_HOSTS:
+        message = "otel_endpoint deve apontar para loopback (127.0.0.1, localhost ou ::1)"
+        raise ValueError(message)
+    return value
+
+
 class TomlFileSource(PydanticBaseSettingsSource):
     """Lê o `config.toml` do utilizador; ausente equivale a nenhum valor."""
 
@@ -74,18 +89,7 @@ class AppSettings(BaseSettings):  # type: ignore[explicit-any]  # __init__ de Ba
     @field_validator("otel_endpoint")
     @classmethod
     def _require_loopback_endpoint(cls, value: str) -> str:
-        """Telemetria nunca sai da máquina (RN-24): só endpoints de loopback."""
-        try:
-            parts = urlsplit(value)
-            hostname = parts.hostname
-            parts.port  # noqa: B018 - valida a porta (ValueError se inválida)
-        except ValueError as exc:
-            message = "otel_endpoint deve ser uma URL válida de loopback"
-            raise ValueError(message) from exc
-        if parts.scheme not in {"http", "https"} or hostname not in LOOPBACK_HOSTS:
-            message = "otel_endpoint deve apontar para loopback (127.0.0.1, localhost ou ::1)"
-            raise ValueError(message)
-        return value
+        return require_loopback_endpoint(value)
 
     @classmethod
     @override

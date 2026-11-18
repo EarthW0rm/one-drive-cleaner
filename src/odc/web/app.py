@@ -12,6 +12,7 @@ from odc.web.lifespan import create_lifespan
 from odc.web.routes.auth import create_auth_router
 from odc.web.routes.folders import create_folders_router
 from odc.web.routes.jobs import create_jobs_router
+from odc.web.routes.settings import create_settings_router
 from odc.web.routes.system import create_system_router
 from odc.web.security import install_security, require_csrf
 from odc.web.services import AppServices
@@ -62,6 +63,7 @@ def create_app(settings: AppSettings, services: AppServices) -> FastAPI:
     app.include_router(create_auth_router(services, settings.port))
     app.include_router(create_folders_router(services))
     app.include_router(create_jobs_router(services))
+    app.include_router(create_settings_router(services))
     app.include_router(_unknown_api_router())
     register_spa(app, services.static_dir)
     return app

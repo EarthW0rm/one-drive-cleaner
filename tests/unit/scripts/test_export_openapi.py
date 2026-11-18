@@ -26,6 +26,7 @@ def test_schema_contem_rotas_de_sistema() -> None:
         "/api/jobs/{job_id}/resume",
         "/api/failures",
         "/api/failures/retry",
+        "/api/settings",
     }
 
 

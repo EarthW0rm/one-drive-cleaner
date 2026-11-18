@@ -2,20 +2,17 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { ApiError, apiFetch } from "./client";
+import type { components } from "./schema.gen";
 
-export type AutomationMode = "manual" | "auto" | "evolutive";
+export type SettingsModel = components["schemas"]["SettingsResponse"];
+export type AutomationMode = SettingsModel["automation_mode"];
 
 export const DEFAULT_AUTOMATION_MODE: AutomationMode = "evolutive";
 const SETTINGS_KEY = ["settings"] as const;
 
-/** Contrato do plan 4.1 (`GET|PUT /api/settings`); a rota entra na TF-156-01. */
-export interface SettingsModel {
-  readonly automation_mode: AutomationMode;
-}
-
 /**
  * Lê as configurações. Rota ausente (404) devolve `null`: o assistente oculta o passo de
- * automação até a TF-156-01 expor `/api/settings`.
+ * automação, útil quando a API local é de uma versão anterior à rota `/api/settings`.
  */
 export async function fetchSettings(): Promise<SettingsModel | null> {
   try {

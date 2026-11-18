@@ -474,6 +474,145 @@
         ],
         "title": "SetScanRootsRequest",
         "type": "object"
+      },
+      "SettingsPatch": {
+        "additionalProperties": false,
+        "description": "Alteração parcial: só os campos enviados são gravados; `null` é recusado.",
+        "properties": {
+          "auto_threshold": {
+            "anyOf": [
+              {
+                "maximum": 0.999,
+                "minimum": 0.5,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Threshold"
+          },
+          "automation_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual",
+                  "auto",
+                  "evolutive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automation Mode"
+          },
+          "otel_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otel Enabled"
+          },
+          "otel_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otel Endpoint"
+          },
+          "retrain_every": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": 5.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrain Every"
+          },
+          "temp_cap_bytes": {
+            "anyOf": [
+              {
+                "minimum": 268435456.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temp Cap Bytes"
+          }
+        },
+        "title": "SettingsPatch",
+        "type": "object"
+      },
+      "SettingsResponse": {
+        "properties": {
+          "auto_threshold": {
+            "title": "Auto Threshold",
+            "type": "number"
+          },
+          "automation_mode": {
+            "enum": [
+              "manual",
+              "auto",
+              "evolutive"
+            ],
+            "title": "Automation Mode",
+            "type": "string"
+          },
+          "otel_enabled": {
+            "title": "Otel Enabled",
+            "type": "boolean"
+          },
+          "otel_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otel Endpoint"
+          },
+          "restart_required": {
+            "title": "Restart Required",
+            "type": "boolean"
+          },
+          "retrain_every": {
+            "title": "Retrain Every",
+            "type": "integer"
+          },
+          "temp_cap_bytes": {
+            "title": "Temp Cap Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "automation_mode",
+          "auto_threshold",
+          "retrain_every",
+          "temp_cap_bytes",
+          "otel_enabled",
+          "otel_endpoint",
+          "restart_required"
+        ],
+        "title": "SettingsResponse",
+        "type": "object"
       }
     }
   },
@@ -1414,6 +1553,136 @@
         "summary": "Get Session",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "get_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Requisição inválida"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Get Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "update_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Valor fora da faixa ou campo não permitido"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Update Settings",
+        "tags": [
+          "settings"
         ]
       }
     },
