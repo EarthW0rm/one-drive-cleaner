@@ -15,10 +15,12 @@ from opentelemetry.trace import Span
 
 from odc.config import AppSettings
 from odc.telemetry import instrument as instrument_module
-from odc.telemetry.instrument import HttpxHooks, instrument_all
+from odc.telemetry.instrument import HttpxHooks, instrument_all, with_redaction
+from odc.telemetry.redaction import RequestInfo, ResponseInfo
 from odc.telemetry.setup import init_telemetry
 
 from .conftest import MemoryTelemetry
+from .fakes import FakeRequest, FakeResponse
 
 BASE_URL = "http://127.0.0.1:8765"
 
@@ -104,10 +106,10 @@ def test_httpx_gera_span_cliente_e_aciona_hooks_de_redaction(
 ) -> None:
     seen: list[str] = []
 
-    def request_hook(span: Span, request: httpx.Request) -> None:
+    def request_hook(span: Span, request: RequestInfo) -> None:
         seen.append("request")
 
-    def response_hook(span: Span, request: httpx.Request, response: httpx.Response) -> None:
+    def response_hook(span: Span, request: RequestInfo, response: ResponseInfo) -> None:
         seen.append(f"response:{response.status_code}")
 
     hooks = HttpxHooks(request=request_hook, response=response_hook)
@@ -196,3 +198,80 @@ def test_coletor_inalcancavel_nao_aumenta_a_latencia_das_requisicoes() -> None:
 
     assert elapsed < 2
     handle.shutdown(timeout_s=0.5)
+
+
+def test_span_do_servidor_exporta_so_atributos_permitidos(
+    instrumented: TestClient, memory: MemoryTelemetry
+) -> None:
+    instrumented.get("/api/session?token=SEGREDO", headers={"user-agent": "marco@example.com"})
+
+    spans = _finished(memory)
+    assert spans
+    for span in spans:
+        exported = dict(span.attributes or {})
+        assert (
+            not {"url.query", "url.path", "user_agent.original", "client.address"} & exported.keys()
+        )
+        assert "SEGREDO" not in str(exported)
+        assert "marco" not in str(exported)
+    assert any((span.attributes or {}).get("http.route") == "/api/session" for span in spans)
+
+
+def test_redaction_e_aplicada_antes_dos_hooks_adicionais(
+    memory: MemoryTelemetry, loopback_url: str
+) -> None:
+    seen: list[str] = []
+
+    def extra(span: Span, request: RequestInfo) -> None:
+        seen.append(str(dict(getattr(span, "attributes", {}) or {}).get("url.full")))
+
+    instrument_all(FastAPI(), memory.handle, HttpxHooks(request=extra))
+
+    with httpx.Client() as client:
+        client.get(loopback_url)
+
+    assert seen == ["http://127.0.0.1"]
+
+
+def test_with_redaction_sem_hooks_adicionais_so_aplica_a_redaction(
+    memory: MemoryTelemetry,
+) -> None:
+    hooks = with_redaction()
+    request = FakeRequest(b"GET", httpx.URL("https://graph.microsoft.com/v1.0/me/drive"))
+    response = FakeResponse(200)
+    tracer = memory.handle.tracer_provider.get_tracer("teste")
+
+    with tracer.start_as_current_span("GET") as span:
+        assert hooks.request is not None
+        assert hooks.response is not None
+        hooks.request(span, request)
+        hooks.response(span, request, response)
+        attributes = dict(getattr(span, "attributes", {}) or {})
+
+    assert attributes["odc.graph.operation"] == "drive"
+
+
+@pytest.mark.asyncio
+async def test_with_redaction_encadeia_hooks_assincronos(memory: MemoryTelemetry) -> None:
+    seen: list[str] = []
+
+    async def extra_request(span: Span, request: RequestInfo) -> None:
+        seen.append("request")
+
+    async def extra_response(span: Span, request: RequestInfo, response: ResponseInfo) -> None:
+        seen.append("response")
+
+    hooks = with_redaction(HttpxHooks(async_request=extra_request, async_response=extra_response))
+    request = FakeRequest(b"GET", httpx.URL("https://graph.microsoft.com/v1.0/me/drive"))
+    response = FakeResponse(200)
+    tracer = memory.handle.tracer_provider.get_tracer("teste")
+
+    with tracer.start_as_current_span("GET") as span:
+        assert hooks.async_request is not None
+        assert hooks.async_response is not None
+        await hooks.async_request(span, request)
+        await hooks.async_response(span, request, response)
+        attributes = dict(getattr(span, "attributes", {}) or {})
+
+    assert seen == ["request", "response"]
+    assert attributes["odc.graph.operation"] == "drive"

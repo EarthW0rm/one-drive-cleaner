@@ -6,7 +6,6 @@ import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-import httpx
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -14,6 +13,14 @@ from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.instrumentation.system_metrics import SystemMetricsInstrumentor
 from opentelemetry.trace import Span
 
+from odc.telemetry.redaction import (
+    RequestInfo,
+    ResponseInfo,
+    async_httpx_request_hook,
+    async_httpx_response_hook,
+    httpx_request_hook,
+    httpx_response_hook,
+)
 from odc.telemetry.setup import TelemetryHandle
 
 logger = logging.getLogger(__name__)
@@ -28,20 +35,54 @@ PROCESS_METRICS: dict[str, list[str] | None] = {
     "process.memory.virtual": None,
 }
 
-type RequestHook = Callable[[Span, httpx.Request], None]
-type ResponseHook = Callable[[Span, httpx.Request, httpx.Response], None]
-type AsyncRequestHook = Callable[[Span, httpx.Request], Awaitable[None]]
-type AsyncResponseHook = Callable[[Span, httpx.Request, httpx.Response], Awaitable[None]]
+type RequestHook = Callable[[Span, RequestInfo], None]
+type ResponseHook = Callable[[Span, RequestInfo, ResponseInfo], None]
+type AsyncRequestHook = Callable[[Span, RequestInfo], Awaitable[None]]
+type AsyncResponseHook = Callable[[Span, RequestInfo, ResponseInfo], Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
 class HttpxHooks:
-    """Hooks de redaction plugáveis (TF-145-02); executam antes de o span ser finalizado."""
+    """Hooks adicionais do httpx; executam depois da redaction, que é sempre aplicada."""
 
     request: RequestHook | None = None
     response: ResponseHook | None = None
     async_request: AsyncRequestHook | None = None
     async_response: AsyncResponseHook | None = None
+
+
+def with_redaction(extra: HttpxHooks | None = None) -> HttpxHooks:
+    """Hooks de httpx com a redaction (RN-24) sempre primeiro, seguidos dos hooks adicionais."""
+    extra = extra or HttpxHooks()
+    extra_request, extra_response = extra.request, extra.response
+    extra_async_request, extra_async_response = extra.async_request, extra.async_response
+
+    def request(span: Span, info: RequestInfo) -> None:
+        httpx_request_hook(span, info)
+        if extra_request is not None:
+            extra_request(span, info)
+
+    def response(span: Span, info: RequestInfo, result: ResponseInfo) -> None:
+        httpx_response_hook(span, info, result)
+        if extra_response is not None:
+            extra_response(span, info, result)
+
+    async def async_request(span: Span, info: RequestInfo) -> None:
+        await async_httpx_request_hook(span, info)
+        if extra_async_request is not None:
+            await extra_async_request(span, info)
+
+    async def async_response(span: Span, info: RequestInfo, result: ResponseInfo) -> None:
+        await async_httpx_response_hook(span, info, result)
+        if extra_async_response is not None:
+            await extra_async_response(span, info, result)
+
+    return HttpxHooks(
+        request=request,
+        response=response,
+        async_request=async_request,
+        async_response=async_response,
+    )
 
 
 def instrument_all(
@@ -52,7 +93,7 @@ def instrument_all(
         return
     # Convenção semântica estável de HTTP (`http.response.status_code`, `url.*`), como no catálogo.
     os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http")
-    hooks = httpx_hooks or HttpxHooks()
+    hooks = with_redaction(httpx_hooks)
     steps: list[tuple[str, Callable[[], object]]] = [
         ("fastapi", lambda: _instrument_fastapi(app, handle)),
         ("httpx", lambda: _instrument_httpx(handle, hooks)),

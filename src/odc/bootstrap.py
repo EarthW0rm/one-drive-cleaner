@@ -170,6 +170,8 @@ def _start_server(runtime: Runtime) -> RunningServer:
         port=settings.port,
         log_level=settings.log_level.lower(),
         access_log=False,
+        # Sem `log_config`, os logs do uvicorn propagam ao logger raiz e passam pela redaction.
+        log_config=None,
         proxy_headers=False,
         server_header=False,
         ws="none",

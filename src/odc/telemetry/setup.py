@@ -25,6 +25,7 @@ from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, LogRecordExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import MetricReader, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import View
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
@@ -32,6 +33,9 @@ from opentelemetry.trace import NoOpTracerProvider
 from opentelemetry.trace import TracerProvider as TracerProviderApi
 
 from odc.config import AppSettings
+from odc.telemetry.attributes import METRIC_KEYS
+from odc.telemetry.export import SanitizingLogExporter, SanitizingSpanExporter
+from odc.telemetry.logging import RedactionFilter
 
 logger = logging.getLogger(__name__)
 
@@ -152,13 +156,21 @@ def _build(
     tracer_provider = TracerProvider(
         resource=resource, shutdown_on_exit=False
     )  # sampler: OTEL_TRACES_SAMPLER
-    tracer_provider.add_span_processor(BatchSpanProcessor(exporters.spans))
+    # Redaction (RN-24): exportadores sanitizam na saída; views limitam os atributos de métrica
+    # aos enums do catálogo; o handler OTLP recebe registros já passados pela RedactionFilter.
+    tracer_provider.add_span_processor(BatchSpanProcessor(SanitizingSpanExporter(exporters.spans)))
     meter_provider = MeterProvider(
-        resource=resource, metric_readers=[exporters.metrics], shutdown_on_exit=False
+        resource=resource,
+        metric_readers=[exporters.metrics],
+        views=[View(instrument_name="*", attribute_keys=set(METRIC_KEYS))],
+        shutdown_on_exit=False,
     )
     logger_provider = LoggerProvider(resource=resource, shutdown_on_exit=False)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporters.logs))
+    logger_provider.add_log_record_processor(
+        BatchLogRecordProcessor(SanitizingLogExporter(exporters.logs))
+    )
     handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
+    handler.addFilter(RedactionFilter())
     logging.getLogger().addHandler(handler)
     sdk_logger = logging.getLogger("opentelemetry")
     previous_level = sdk_logger.level

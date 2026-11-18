@@ -183,3 +183,41 @@ def test_set_global_registra_os_tres_providers(monkeypatch: pytest.MonkeyPatch) 
     handle.shutdown()
 
     assert registered == ["t", "m", "l"]
+
+
+def test_log_com_dado_sensivel_chega_ao_exportador_sanitizado(memory: MemoryTelemetry) -> None:
+    with_logger = logging.getLogger("odc.teste.setup.redaction")
+    with_logger.setLevel(logging.INFO)
+
+    with_logger.warning(
+        "falha token=SEGREDO em /Users/marco/a.jpg de marco@example.com",
+        extra={"arquivo": "IMG_1.jpg", "event.name": "job.paused"},
+    )
+    memory.handle.logger_provider.force_flush()  # type: ignore[attr-defined]
+
+    [record] = [
+        r for r in memory.logs.get_finished_logs() if r.log_record.event_name == "job.paused"
+    ]
+    assert isinstance(record.log_record.body, str)
+    exported = f"{record.log_record.body} {dict(record.log_record.attributes or {})}"
+    assert "SEGREDO" not in exported
+    assert "marco" not in exported
+    assert "IMG_1" not in exported
+
+
+def test_metrica_so_exporta_atributos_do_catalogo(memory: MemoryTelemetry) -> None:
+    counter = memory.handle.meter_provider.get_meter("teste").create_counter("odc.teste.attrs")
+    counter.add(1, {"operation": "delta", "item": "IMG_1234.jpg", "folder": "/Users/marco"})
+
+    data = memory.reader.get_metrics_data()
+
+    assert data is not None
+    points = [
+        point
+        for resource in data.resource_metrics
+        for scope in resource.scope_metrics
+        for metric in scope.metrics
+        if metric.name == "odc.teste.attrs"
+        for point in metric.data.data_points
+    ]
+    assert [dict(point.attributes or {}) for point in points] == [{"operation": "delta"}]
