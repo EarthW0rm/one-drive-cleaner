@@ -118,6 +118,12 @@ def auto_candidates(session: Session, threshold: float) -> Sequence[PredictionRo
     return [to_dto(PredictionRow, r) for r in session.execute(stmt)]
 
 
+def get_by_item(session: Session, item_id: int) -> PredictionRow | None:
+    """Predição vigente do item (`None` se ainda não classificado)."""
+    row = session.execute(select(*_COLUMNS).where(prediction.c.item_id == item_id)).first()
+    return None if row is None else to_dto(PredictionRow, row)
+
+
 def delete_for_items(session: Session, item_ids: Sequence[int]) -> int:
     """Remove as predições vigentes dos itens (voltaram a `DESCOBERTO`); devolve a quantidade."""
     removed = 0

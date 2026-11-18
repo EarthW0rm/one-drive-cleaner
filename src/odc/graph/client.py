@@ -43,7 +43,7 @@ DELTA_SELECT: Final = (
     "id,name,file,image,photo,location,size,parentReference,cTag,eTag,"
     "createdDateTime,lastModifiedDateTime,deleted"
 )
-GET_ITEM_SELECT: Final = "id,name,parentReference,eTag,deleted,folder"
+GET_ITEM_SELECT: Final = "id,name,parentReference,cTag,eTag,deleted,folder"
 _SAFE_SEGMENT = re.compile(r"[A-Za-z0-9!_.~-]+")
 _THUMB_SIZE = re.compile(r"[a-z0-9]{1,16}")
 
@@ -99,7 +99,7 @@ class GraphClient:
         return _model(DriveItem, response)
 
     async def get_item(self, item_id: str) -> DriveItem:
-        """Item para reconciliação (`id,name,parentReference,eTag,deleted,folder`)."""
+        """Item para reconciliação e pré-checagem (inclui `cTag`, `eTag` e `parentReference`)."""
         response = await self._http.request(
             GraphOperation.GET_ITEM,
             "GET",

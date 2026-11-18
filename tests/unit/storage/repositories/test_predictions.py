@@ -171,3 +171,17 @@ def test_delete_for_items_remove_somente_os_itens_pedidos(
 
 def test_delete_for_items_sem_ids_nao_remove_nada(session: Session) -> None:
     assert predictions.delete_for_items(session, []) == 0
+
+
+def test_get_by_item_devolve_a_predicao_vigente_ou_none(
+    session: Session, make_item: ItemFactory, version_id: int
+) -> None:
+    [classified] = _seed(session, make_item, version_id, [0.4])
+    unclassified = make_item("ANALISADO")
+
+    found = predictions.get_by_item(session, classified)
+
+    assert found is not None
+    assert found.item_id == classified
+    assert found.margin == pytest.approx(0.4)
+    assert predictions.get_by_item(session, unclassified.id) is None
