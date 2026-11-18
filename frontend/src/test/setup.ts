@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
 
 import { resetCsrfToken } from "../api/client";
 
@@ -21,6 +21,14 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => false,
   }),
 });
+
+// jsdom não implementa ResizeObserver (usado pelos componentes de seleção do antd).
+class ResizeObserverStub {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+window.ResizeObserver = ResizeObserverStub;
 
 // Nenhum teste acessa a rede real: requisições sem handler explícito falham.
 beforeAll(() => {

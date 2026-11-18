@@ -8,7 +8,15 @@ import { describe, expect, it } from "vitest";
 
 import { createQueryClient } from "../api/queryClient";
 import { SESSION_KEY } from "../api/useSession";
-import { errorResponse, session, sessionHandler, TEST_ORIGIN } from "../test/handlers";
+import {
+  errorResponse,
+  foldersHandler,
+  onboardedHandlers,
+  scanRootsHandler,
+  session,
+  sessionHandler,
+  TEST_ORIGIN,
+} from "../test/handlers";
 import { server } from "../test/server";
 
 import { AppRoutes } from "./routes";
@@ -168,5 +176,24 @@ describe("AppLayout", () => {
     renderApp("/nada");
 
     expect(await screen.findByText("Página não encontrada")).toBeInTheDocument();
+  });
+
+  it("redireciona para /onboarding quando não há pasta de varredura", async () => {
+    server.use(sessionHandler(), scanRootsHandler([]), foldersHandler());
+    renderApp("/revisao");
+
+    expect(
+      await screen.findByRole("heading", { name: "Primeira configuração" }),
+    ).toBeInTheDocument();
+  });
+
+  it("não redireciona quando a primeira configuração já foi concluída", async () => {
+    server.use(sessionHandler(), ...onboardedHandlers());
+    renderApp("/quarentena");
+
+    expect(await screen.findByRole("heading", { name: "Quarentena" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Primeira configuração" }),
+    ).not.toBeInTheDocument();
   });
 });

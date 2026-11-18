@@ -2,10 +2,11 @@
 import { BellOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Layout, Menu, Result, Space, Tag, Typography } from "antd";
-import type { ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../api/client";
+import { NEEDS_ONBOARDING_KEY, SCAN_ROOTS_KEY, useNeedsOnboarding } from "../api/folders";
 import { LOGIN_PATH, SESSION_KEY, useSession } from "../api/useSession";
 
 import { errorMessage } from "./errors";
@@ -13,6 +14,8 @@ import { MENU_ITEMS } from "./menu";
 import { useTheme } from "./theme";
 
 const { Header, Sider, Content } = Layout;
+
+export const ONBOARDING_PATH = "/onboarding";
 
 export function AppLayout(): ReactElement {
   const session = useSession();
@@ -24,9 +27,18 @@ export function AppLayout(): ReactElement {
     mutationFn: () => apiFetch<unknown>("/auth/logout", { method: "POST" }),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: SESSION_KEY });
+      queryClient.removeQueries({ queryKey: NEEDS_ONBOARDING_KEY });
+      queryClient.removeQueries({ queryKey: SCAN_ROOTS_KEY });
       void navigate(LOGIN_PATH, { replace: true });
     },
   });
+  const needsOnboarding = useNeedsOnboarding(session.data?.auth_state === "authenticated");
+  const redirectToOnboarding = needsOnboarding.data === true && pathname !== ONBOARDING_PATH;
+  useEffect(() => {
+    if (redirectToOnboarding) {
+      void navigate(ONBOARDING_PATH, { replace: true });
+    }
+  }, [redirectToOnboarding, navigate]);
   const selected = MENU_ITEMS.filter((item) => pathname.startsWith(item.key)).map(
     (item) => item.key,
   );

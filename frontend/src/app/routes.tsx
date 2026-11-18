@@ -4,8 +4,9 @@ import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { LoginPage } from "../pages/Login/LoginPage";
+import { OnboardingPage } from "../pages/Onboarding/OnboardingPage";
 
-import { AppLayout } from "./AppLayout";
+import { AppLayout, ONBOARDING_PATH } from "./AppLayout";
 import { MENU_ITEMS } from "./menu";
 
 const HOME_PATH = "/revisao";
@@ -26,6 +27,7 @@ export function AppRoutes(): ReactElement {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<AppLayout />}>
         <Route index element={<Navigate to={HOME_PATH} replace />} />
+        <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
         {MENU_ITEMS.map((item) => (
           <Route key={item.key} path={item.key} element={<Placeholder title={item.label} />} />
         ))}
