@@ -8,6 +8,7 @@ export const ERROR_MESSAGES: Record<ApiErrorCode, string> = {
   INVALID_CONFIRMATION: "A confirmação informada não confere.",
   LOGIN_REQUIRED: "É necessário entrar na conta Microsoft.",
   CONFLICT: "A operação conflita com o estado atual. Atualize e tente novamente.",
+  GRAPH_UNAVAILABLE: "O OneDrive não respondeu. Tente novamente em instantes.",
   NOT_FOUND: "O recurso solicitado não foi encontrado.",
   INTERNAL: "Ocorreu um erro interno. Tente novamente.",
   NETWORK_ERROR:

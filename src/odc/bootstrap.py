@@ -27,6 +27,9 @@ from odc.auth.errors import AuthError
 from odc.auth.models import Account
 from odc.auth.service import AuthService
 from odc.config import AppSettings
+from odc.graph.client import GraphClient
+from odc.graph.http import GRAPH_BASE_URL, GraphHttp
+from odc.graph.limiter import AimdLimiter
 from odc.jobs.handler import Handler
 from odc.jobs.queue import JobQueue
 from odc.jobs.resumer import JobResumer
@@ -156,7 +159,8 @@ def bootstrap(
         message = f"falha na migração do banco ({error.code})."
         raise BootstrapError(EXIT_FAILURE, message) from error
     jobs = _job_supervisor(database, telemetry, metrics, handlers or {})
-    app = create_app(settings, AppServices(database=database, auth=auth, jobs=jobs))
+    graph = _graph_client(auth, metrics)
+    app = create_app(settings, AppServices(database=database, auth=auth, jobs=jobs, graph=graph))
     instrument_all(app, telemetry, httpx_hooks)
     runtime = Runtime(settings=settings, database=database, app=app, telemetry=telemetry)
     try:
@@ -166,6 +170,14 @@ def bootstrap(
         telemetry.shutdown()
         raise
     return runtime
+
+
+def _graph_client(auth: AuthGateway, metrics: Metrics) -> GraphClient | None:
+    """Cliente da Graph sobre o `AuthService`; gateways sem token (stubs, placeholder) → None."""
+    if not isinstance(auth, AuthService):
+        return None
+    limiter = AimdLimiter(metrics=metrics)
+    return GraphClient(GraphHttp(GRAPH_BASE_URL, auth, limiter, metrics=metrics))
 
 
 def _job_supervisor(

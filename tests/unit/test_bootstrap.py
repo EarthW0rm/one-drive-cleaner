@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from email.message import Message
 from importlib import metadata
 from pathlib import Path
+from typing import cast
 
 import pytest
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
@@ -33,13 +34,16 @@ from odc.bootstrap import (
     run,
 )
 from odc.config import AppSettings
+from odc.graph.client import GraphClient
 from odc.jobs.handler import JobContext
 from odc.jobs.payloads import ScanPayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType
 from odc.storage import account_db as account_db_module
 from odc.storage.migrate import MigrationError
+from odc.telemetry.metrics import Metrics
 from odc.telemetry.setup import Exporters, TelemetryHandle, init_telemetry
+from odc.web.services import AuthGateway, LoginRequiredGateway
 
 PRIVATE_MODE = 0o600
 LOOPBACK = "127.0.0.1"
@@ -125,6 +129,23 @@ def test_bootstrap_cria_banco_privado_no_caminho_local(home: Path, runtime: Runt
     assert runtime.db_path == expected
     assert runtime.db_path.is_file()
     assert stat.S_IMODE(runtime.db_path.stat().st_mode) == PRIVATE_MODE
+
+
+def test_bootstrap_liga_cliente_da_graph_ao_servico_de_autenticacao(runtime: Runtime) -> None:
+    graph = bootstrap_module._graph_client(
+        cast(AuthGateway, FakeAuthService("client-id")),
+        Metrics.create(runtime.telemetry.meter_provider),
+    )
+
+    assert isinstance(graph, GraphClient)
+
+
+def test_gateway_sem_token_nao_cria_cliente_da_graph(runtime: Runtime) -> None:
+    graph = bootstrap_module._graph_client(
+        LoginRequiredGateway(), Metrics.create(runtime.telemetry.meter_provider)
+    )
+
+    assert graph is None
 
 
 def test_bootstrap_executa_hooks_na_ordem_registrada(home: Path, free_port: int) -> None:

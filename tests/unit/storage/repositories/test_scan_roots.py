@@ -62,3 +62,11 @@ def test_checkpoint_de_delta(session: Session, root: ScanRootRow) -> None:
 def test_atualizacao_de_pasta_inexistente(session: Session, call: object) -> None:
     with pytest.raises(NotFoundError):
         call(session)  # type: ignore[operator]
+
+
+def test_set_display_path(session: Session, root: ScanRootRow) -> None:
+    scan_roots.set_display_path(session, root.id, "/Fotos/Camera Roll")
+
+    assert scan_roots.get(session, root.id).display_path == "/Fotos/Camera Roll"  # type: ignore[union-attr]
+    with pytest.raises(NotFoundError):
+        scan_roots.set_display_path(session, 999, "/x")

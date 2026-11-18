@@ -52,6 +52,11 @@ def set_enabled(session: Session, root_id: int, *, enabled: bool) -> None:
     _update(session, root_id, enabled=int(enabled))
 
 
+def set_display_path(session: Session, root_id: int, display_path: str) -> None:
+    """Atualiza o caminho de exibição (a pasta pode ter sido renomeada ou movida)."""
+    _update(session, root_id, display_path=display_path)
+
+
 def save_next_link(session: Session, root_id: int, next_link: str) -> None:
     """Checkpoint de paginação em andamento."""
     _update(session, root_id, next_link=next_link)
@@ -73,5 +78,6 @@ __all__ = [
     "mark_full_scan",
     "save_delta_link",
     "save_next_link",
+    "set_display_path",
     "set_enabled",
 ]

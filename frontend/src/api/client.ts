@@ -12,6 +12,7 @@ const KNOWN_CODES: Record<ErrorCode, true> = {
   INVALID_CONFIRMATION: true,
   LOGIN_REQUIRED: true,
   CONFLICT: true,
+  GRAPH_UNAVAILABLE: true,
   NOT_FOUND: true,
   INTERNAL: true,
 };

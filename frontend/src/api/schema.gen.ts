@@ -5,6 +5,41 @@
  */
 
 export interface paths {
+    "/api/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Folders */
+        get: operations["list_folders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan-roots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Scan Roots */
+        get: operations["list_scan_roots"];
+        /** Set Scan Roots */
+        put: operations["set_scan_roots"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -113,13 +148,27 @@ export interface components {
          * ErrorCode
          * @enum {string}
          */
-        ErrorCode: "VALIDATION_ERROR" | "PROTECTED_CATEGORY" | "NOT_IN_QUARANTINE" | "INVALID_CONFIRMATION" | "LOGIN_REQUIRED" | "CONFLICT" | "NOT_FOUND" | "INTERNAL";
+        ErrorCode: "VALIDATION_ERROR" | "PROTECTED_CATEGORY" | "NOT_IN_QUARANTINE" | "INVALID_CONFIRMATION" | "LOGIN_REQUIRED" | "CONFLICT" | "GRAPH_UNAVAILABLE" | "NOT_FOUND" | "INTERNAL";
         /**
          * ErrorResponse
          * @description Envelope do erro padrão: `{"error": {"code", "message", "details"}}`.
          */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** FolderModel */
+        FolderModel: {
+            /** Child Count */
+            child_count: number;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** FoldersResponse */
+        FoldersResponse: {
+            /** Folders */
+            folders: components["schemas"]["FolderModel"][];
         };
         /** HealthResponse */
         HealthResponse: {
@@ -139,6 +188,20 @@ export interface components {
              */
             status: "ok" | "error";
         };
+        /** ScanRootModel */
+        ScanRootModel: {
+            /** Display Path */
+            display_path: string;
+            /** Id */
+            id: number;
+            /** Is Default */
+            is_default: boolean;
+        };
+        /** ScanRootsResponse */
+        ScanRootsResponse: {
+            /** Scan Roots */
+            scan_roots: components["schemas"]["ScanRootModel"][];
+        };
         /** SessionResponse */
         SessionResponse: {
             account: components["schemas"]["AccountInfo"] | null;
@@ -150,6 +213,11 @@ export interface components {
             /** Csrf Token */
             csrf_token: string;
         };
+        /** SetScanRootsRequest */
+        SetScanRootsRequest: {
+            /** Folder Ids */
+            folder_ids: string[];
+        };
     };
     responses: never;
     parameters: never;
@@ -159,6 +227,234 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_folders: {
+        parameters: {
+            query?: {
+                parent_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoldersResponse"];
+                };
+            };
+            /** @description Login necessário */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requisição inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Graph indisponível */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_scan_roots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanRootsResponse"];
+                };
+            };
+            /** @description Login necessário */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requisição inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Graph indisponível */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_scan_roots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetScanRootsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanRootsResponse"];
+                };
+            };
+            /** @description Login necessário */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requisição inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Graph indisponível */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_session: {
         parameters: {
             query?: never;

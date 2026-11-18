@@ -18,6 +18,8 @@ def test_schema_contem_rotas_de_sistema() -> None:
         "/auth/login",
         "/auth/callback",
         "/auth/logout",
+        "/api/folders",
+        "/api/scan-roots",
     }
 
 

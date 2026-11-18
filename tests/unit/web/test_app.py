@@ -20,6 +20,8 @@ def test_openapi_e_publicado_em_api_openapi_json(client: TestClient) -> None:
         "/auth/login",
         "/auth/callback",
         "/auth/logout",
+        "/api/folders",
+        "/api/scan-roots",
     }
 
 
@@ -33,6 +35,7 @@ def test_openapi_declara_erro_padrao_e_enum_de_codigos(client: TestClient) -> No
         "INVALID_CONFIRMATION",
         "LOGIN_REQUIRED",
         "CONFLICT",
+        "GRAPH_UNAVAILABLE",
         "NOT_FOUND",
         "INTERNAL",
     }

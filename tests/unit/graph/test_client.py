@@ -126,7 +126,7 @@ class TestReads:
         assert item.e_tag == "FAKE-etag"
         assert item.deleted is True
         assert route.calls.last.request.url.params["$select"] == (
-            "id,name,parentReference,eTag,deleted"
+            "id,name,parentReference,eTag,deleted,folder"
         )
 
     async def test_get_item_not_found_propagates(
