@@ -2,18 +2,19 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { sessionHandler } from "../test/handlers";
+import { server } from "../test/server";
+
 import { App } from "./App";
 
 describe("App", () => {
-  it("renderiza o título da página placeholder", () => {
+  it("renderiza o casco e a tela inicial de Revisão", async () => {
+    server.use(sessionHandler());
+
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "OneDrive Cleaner" })).toBeInTheDocument();
-  });
-
-  it("aplica o locale pt_BR do antd", () => {
-    render(<App />);
-
-    expect(screen.getAllByText("Não há dados").length).toBeGreaterThan(0);
+    expect(await screen.findByText("Maria Teste")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Revisão" })).toBeInTheDocument();
+    expect(screen.getByText("OneDrive Cleaner")).toBeInTheDocument();
   });
 });

@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it } from "vitest";
+
+import { createQueryClient } from "../api/queryClient";
+
+import { AppRoutes } from "./routes";
+
+describe("AppRoutes", () => {
+  it("renderiza /login sem o layout e sem chamar a API", () => {
+    render(
+      <QueryClientProvider client={createQueryClient(0)}>
+        <MemoryRouter initialEntries={["/login"]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole("heading", { name: "Entrar na conta Microsoft" })).toBeInTheDocument();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+});
