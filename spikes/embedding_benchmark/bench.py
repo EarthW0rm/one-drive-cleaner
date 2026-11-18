@@ -4,7 +4,7 @@
 import time
 from collections import Counter
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
@@ -21,6 +21,7 @@ from spikes.embedding_benchmark.dataset import (
     load_images,
 )
 from spikes.embedding_benchmark.errors import BenchmarkError
+from spikes.embedding_benchmark.manifest import load_manifest
 from spikes.embedding_benchmark.models import (
     MB,
     DeviceChoice,
@@ -84,6 +85,7 @@ class BenchRow:
     license: str
     dim: int
     eligible: bool
+    with_meta: bool = False  # embedding + features de metadados do manifesto (como em produção)
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +114,10 @@ class BenchResult:
     corrupted: int
     pending_review: int
     folds_used: int
+    manifest_present: bool = False
+    meta_evaluated: bool = False
+    custom_size_supported: bool | None = None
+    real_thumbnails: tuple[tuple[int, int], ...] = ()  # (tamanho, imagens com miniatura real)
 
 
 def effective_folds(labels: Sequence[str], folds: int) -> int:
@@ -263,6 +269,28 @@ def build_row(
     )
 
 
+def _meta_row(
+    base: BenchRow,
+    measurement: Measurement,
+    meta: Sequence[tuple[float, ...]],
+    labels: Sequence[str],
+    config: BenchConfig,
+) -> BenchRow:
+    """Linha do modelo com metadados: mesmos custos, qualidade com embedding + features."""
+    combined = np.hstack([measurement.embeddings, np.asarray(meta, dtype=np.float32)])
+    metrics = cross_validate(
+        combined, labels, folds=config.folds, seed=config.seed, threshold=config.threshold
+    )
+    return replace(
+        base,
+        removable_precision=metrics.removable_precision,
+        support=metrics.support,
+        accuracy=metrics.accuracy,
+        macro_f1=metrics.macro_f1,
+        with_meta=True,
+    )
+
+
 def run_benchmark(
     config: BenchConfig, loader: ModelLoader, *, clock: Clock = time.perf_counter
 ) -> BenchResult:
@@ -271,8 +299,10 @@ def run_benchmark(
         message = "informe ao menos um modelo e um tamanho de miniatura"
         raise BenchmarkError(message)
     catalog = discover(config.data_dir)
+    manifest = load_manifest(config.data_dir)
     loaded: dict[int, LoadedImages] = {
-        size: load_images(catalog.samples, size) for size in config.sizes
+        size: load_images(catalog.samples, size, data_dir=config.data_dir, manifest=manifest)
+        for size in config.sizes
     }
     first = loaded[config.sizes[0]]
     folds_used = effective_folds(first.labels, config.folds)
@@ -295,7 +325,10 @@ def run_benchmark(
                     seed=config.seed,
                     threshold=config.threshold,
                 )
-                rows.append(build_row(spec, size, measurement, metrics, model.weights_mb))
+                row = build_row(spec, size, measurement, metrics, model.weights_mb)
+                rows.append(row)
+                if data.meta is not None:
+                    rows.append(_meta_row(row, measurement, data.meta, data.labels, config))
         finally:
             model.close()
     return BenchResult(
@@ -306,4 +339,8 @@ def run_benchmark(
         corrupted=first.corrupted,
         pending_review=catalog.pending_review,
         folds_used=folds_used,
+        manifest_present=manifest is not None,
+        meta_evaluated=any(data.meta is not None for data in loaded.values()),
+        custom_size_supported=manifest.custom_size_supported if manifest else None,
+        real_thumbnails=tuple((size, loaded[size].real_thumbnails) for size in config.sizes),
     )

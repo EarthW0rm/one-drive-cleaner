@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""CLI do spike: `python -m spikes.embedding_benchmark bench --data <dir>`.
+"""CLI do spike: `python -m spikes.embedding_benchmark {sample|bench|purge}`.
 
-Subcomandos `sample` e `purge` entram na TF-150-02.
+- `sample`: coleta somente leitura da amostra no OneDrive (exit 4 sem login);
+- `bench`: compara modelos sobre a amostra rotulada pelas pastas de categoria;
+- `purge`: remove o diretório de dados (dados pessoais) após a decisão.
 """
 
 import argparse
@@ -17,7 +19,7 @@ from spikes.embedding_benchmark.bench import (
     BenchConfig,
     run_benchmark,
 )
-from spikes.embedding_benchmark.errors import BenchmarkError
+from spikes.embedding_benchmark.errors import BenchmarkError, LoginNeededError
 from spikes.embedding_benchmark.models import (
     DEFAULT_MODELS,
     DEVICES,
@@ -28,10 +30,25 @@ from spikes.embedding_benchmark.models import (
     parse_model_specs,
     resolve_device,
 )
+from spikes.embedding_benchmark.purge import Prompt, purge, resolve_inside
 from spikes.embedding_benchmark.report import render_report
+from spikes.embedding_benchmark.sample import (
+    DEFAULT_SEED as SAMPLE_SEED,
+)
+from spikes.embedding_benchmark.sample import (
+    DEFAULT_SIZE,
+    DEFAULT_THUMB_SIZES,
+    Authenticator,
+    GraphSession,
+    SampleConfig,
+    open_graph,
+    parse_thumb_sizes,
+    run_sample,
+)
 
 PACKAGE_DIR: Final = Path(__file__).resolve().parent
 DEFAULT_SIZES: Final = "384,800"
+EXIT_LOGIN: Final = 4
 
 
 def _models_arg(text: str) -> list[ModelSpec]:
@@ -68,12 +85,53 @@ def _at_least(minimum: int) -> Callable[[str], int]:
     return parse
 
 
+def _thumb_sizes_arg(text: str) -> tuple[str, ...]:
+    try:
+        return parse_thumb_sizes(text)
+    except BenchmarkError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _add_sample(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    sample = commands.add_parser(
+        "sample",
+        help="coleta (somente leitura) a amostra do OneDrive, anonimizada e pré-organizada",
+        description=(
+            "Lista a pasta (padrão: Camera Roll), sorteia uma amostra estratificada, baixa "
+            "miniaturas e sugere a categoria em --out/<categoria>/ (dúvidas em _revisar/). "
+            "Exige login prévio no `odc` e ODC_CLIENT_ID."
+        ),
+    )
+    sample.add_argument(
+        "--size", type=_at_least(1), default=DEFAULT_SIZE, help="imagens na amostra"
+    )
+    sample.add_argument("--seed", type=int, default=SAMPLE_SEED, help="seed do sorteio")
+    sample.add_argument("--folder-id", default=None, help="pasta do OneDrive (padrão: Camera Roll)")
+    sample.add_argument(
+        "--sizes",
+        type=_thumb_sizes_arg,
+        default=DEFAULT_THUMB_SIZES,
+        help="miniaturas da Graph (small, medium, large, cWxH); large é obrigatório",
+    )
+    sample.add_argument("--out", type=Path, default=PACKAGE_DIR / "data", help="pasta de dados")
+
+
+def _add_purge(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    purge_parser = commands.add_parser(
+        "purge",
+        help="remove o diretório de dados da amostra (só dentro de embedding_benchmark/)",
+    )
+    purge_parser.add_argument("--data", type=Path, default=PACKAGE_DIR / "data", help="pasta")
+    purge_parser.add_argument("--yes", action="store_true", help="não pede confirmação")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m spikes.embedding_benchmark",
         description="Benchmark de modelos de visão sobre amostra rotulada local (plan 7).",
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    _add_sample(commands)
     bench = commands.add_parser(
         "bench",
         help="compara modelos (precisão, tempo, memória, disco, licença) e gera RESULT.md",
@@ -103,6 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument(
         "--batch-size", type=_at_least(1), default=DEFAULT_BATCH_SIZE, help="imagens/lote"
     )
+    _add_purge(commands)
     return parser
 
 
@@ -129,16 +188,52 @@ def _run_bench(args: argparse.Namespace, loader: ModelLoader, mps: bool) -> int:
     return 0
 
 
-def main(
+def _default_auth() -> Authenticator:
+    """`AuthService` da conta já autenticada pelo `odc` (Keychain); client_id via ODC_CLIENT_ID."""
+    from odc.auth.service import AuthService  # noqa: PLC0415 - só o `sample` precisa de auth
+    from odc.config import ConfigError, load_settings  # noqa: PLC0415
+
+    try:
+        settings = load_settings()
+    except ConfigError as exc:
+        raise BenchmarkError(str(exc)) from exc
+    return AuthService(settings.client_id)
+
+
+def _run_sample(
+    args: argparse.Namespace,
+    auth: Authenticator | None,
+    graph_session: GraphSession,
+    package_dir: Path,
+) -> int:
+    out = resolve_inside(args.out, package_dir)
+    config = SampleConfig(
+        out=out, size=args.size, seed=args.seed, folder_id=args.folder_id, sizes=args.sizes
+    )
+    return run_sample(config, auth if auth is not None else _default_auth(), graph_session)
+
+
+def main(  # noqa: PLR0913 - dependências injetáveis (modelos, auth, Graph, prompt) para testes
     argv: Sequence[str] | None = None,
     *,
     loader: ModelLoader = load_open_clip,
     mps: bool | None = None,
+    auth: Authenticator | None = None,
+    graph_session: GraphSession = open_graph,
+    prompt: Prompt = input,
+    package_dir: Path = PACKAGE_DIR,
 ) -> int:
-    """Executa a CLI; exit 0 em sucesso, 1 em erro de entrada/amostra, 2 em uso inválido."""
+    """Executa a CLI: exit 0 ok, 1 erro de entrada/amostra, 2 uso inválido, 4 sem login."""
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "sample":
+            return _run_sample(args, auth, graph_session, package_dir)
+        if args.command == "purge":
+            return purge(args.data, package_dir, assume_yes=args.yes, prompt=prompt)
         return _run_bench(args, loader, mps_available() if mps is None else mps)
+    except LoginNeededError as exc:
+        sys.stderr.write(f"erro: {exc}\n")
+        return EXIT_LOGIN
     except BenchmarkError as exc:
         sys.stderr.write(f"erro: {exc}\n")
         return 1

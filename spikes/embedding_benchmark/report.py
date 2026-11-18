@@ -45,7 +45,8 @@ def recommend(rows: Sequence[BenchRow], *, tie_margin: float = TIE_MARGIN) -> Re
     Licença não comercial é excluída. Sem nenhuma linha com precisão calculável, cai para
     macro-F1 (mesma regra de promoção da RN-13 sem suporte).
     """
-    eligible = [row for row in rows if row.eligible]
+    # A decisão é sobre modelo + miniatura; a variante com metadados é informativa.
+    eligible = [row for row in rows if row.eligible and not row.with_meta]
     if not eligible:
         return Recommendation(
             None, "nenhum modelo elegível (licença)", tie_applied=False, contenders=()
@@ -79,7 +80,7 @@ def _pct(value: float | None) -> str:
 
 def _table_row(row: BenchRow) -> str:
     cells = (
-        row.model,
+        f"{row.model} + meta" if row.with_meta else row.model,
         str(row.thumb_size),
         _pct(row.removable_precision),
         str(row.support),
@@ -135,6 +136,11 @@ def _warnings(result: BenchResult, best: BenchRow | None) -> list[str]:
             f"Folds reduzidos de {config.folds} para {result.folds_used} "
             "(categoria com poucas imagens)."
         )
+    if result.manifest_present and not result.meta_evaluated:
+        warnings.append(
+            "Variante com metadados não avaliada: há imagens sem entrada no manifesto "
+            "(arquivos adicionados manualmente)."
+        )
     small = [name for name, count in result.category_counts if count < _MIN_PER_CATEGORY]
     missing = [name for name in CATEGORIES if name not in dict(result.category_counts)]
     if small or missing:
@@ -172,6 +178,23 @@ def _recommendation_lines(recommendation: Recommendation) -> list[str]:
     return lines
 
 
+def _sample_source_lines(result: BenchResult) -> list[str]:
+    """Origem das miniaturas e `custom_size_supported` (só agregados; sem nomes nem IDs)."""
+    if not result.manifest_present:
+        return []
+    custom = {None: "não verificado", True: "sim", False: "não (cWxH gerado a partir da large)"}
+    total = sum(count for _, count in result.category_counts)
+    real = ", ".join(f"{size} px: {count}/{total}" for size, count in result.real_thumbnails)
+    return [
+        "",
+        f"Tamanho de miniatura customizado suportado pela Graph (`custom_size_supported`): "
+        f"{custom[result.custom_size_supported]}.",
+        f"Miniaturas de `_thumbs/` usadas por tamanho: {real}.",
+        "Linhas `+ meta`: embedding + features de metadados do manifesto (informativas; "
+        "a recomendação considera só as linhas sem metadados).",
+    ]
+
+
 def render_report(result: BenchResult) -> str:
     """Markdown do `RESULT.md` (pt-BR)."""
     config = result.config
@@ -199,6 +222,7 @@ def render_report(result: BenchResult) -> str:
         "",
         f"Corrompidas ignoradas: {result.corrupted}. Em `{REVIEW_DIR}/` ignoradas: "
         f"{result.pending_review}.",
+        *_sample_source_lines(result),
         "",
         "## Resultados",
         "",

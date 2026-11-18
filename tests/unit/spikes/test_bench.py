@@ -8,7 +8,13 @@ from spikes.embedding_benchmark import bench
 from spikes.embedding_benchmark.errors import BenchmarkError
 from spikes.embedding_benchmark.models import DeviceChoice, ModelSpec, Vectors, parse_model_specs
 
-from tests.unit.spikes.support import FakeModel, StepClock, fake_loader, write_dataset
+from tests.unit.spikes.support import (
+    FakeModel,
+    StepClock,
+    fake_loader,
+    write_dataset,
+    write_sample_layout,
+)
 
 REMOVABLE = frozenset({"screenshot", "meme_sticker", "document_receipt"})
 
@@ -229,3 +235,57 @@ def test_run_benchmark_rejeita_amostra_com_uma_so_categoria(tmp_path: Path) -> N
 
     with pytest.raises(BenchmarkError, match="2 categorias"):
         bench.run_benchmark(_config(tmp_path), fake_loader({"ViT-B-32": FakeModel()}))
+
+
+def _layout_config(root: Path) -> bench.BenchConfig:
+    return bench.BenchConfig(
+        data_dir=root,
+        models=parse_model_specs("clip-b32"),
+        sizes=(64, 800),
+        device=DeviceChoice("cpu", fallback=False),
+        requested_device="cpu",
+    )
+
+
+def test_run_benchmark_avalia_tambem_embedding_mais_metadados_do_manifesto(tmp_path: Path) -> None:
+    write_sample_layout(tmp_path, 6)
+    (tmp_path / "_revisar").mkdir()
+    (tmp_path / "_revisar" / "000900.jpg").write_bytes(b"x")
+
+    result = bench.run_benchmark(_layout_config(tmp_path), fake_loader({"ViT-B-32": FakeModel()}))
+
+    assert [(r.thumb_size, r.with_meta) for r in result.rows] == [
+        (64, False), (64, True), (800, False), (800, True),
+    ]  # fmt: skip
+    plain, meta = result.rows[0], result.rows[1]
+    assert (plain.seconds_per_image, plain.dim, plain.weights_mb) == (
+        meta.seconds_per_image, meta.dim, meta.weights_mb,
+    )  # fmt: skip
+    assert result.manifest_present
+    assert result.meta_evaluated
+    assert result.custom_size_supported is True
+    assert result.real_thumbnails == ((64, 24), (800, 24))
+    assert result.pending_review == 1
+
+
+def test_run_benchmark_sem_manifesto_nao_gera_linhas_de_metadados(tmp_path: Path) -> None:
+    write_dataset(tmp_path, 6)
+
+    result = bench.run_benchmark(_layout_config(tmp_path), fake_loader({"ViT-B-32": FakeModel()}))
+
+    assert [r.with_meta for r in result.rows] == [False, False]
+    assert not result.manifest_present
+    assert not result.meta_evaluated
+    assert result.custom_size_supported is None
+    assert result.real_thumbnails == ((64, 0), (800, 0))
+
+
+def test_run_benchmark_nao_avalia_metadados_com_arquivo_fora_do_manifesto(tmp_path: Path) -> None:
+    write_sample_layout(tmp_path, 6)
+    Image.new("RGB", (40, 40), (9, 9, 9)).save(tmp_path / "real_photo" / "manual.jpg")
+
+    result = bench.run_benchmark(_layout_config(tmp_path), fake_loader({"ViT-B-32": FakeModel()}))
+
+    assert [r.with_meta for r in result.rows] == [False, False]
+    assert result.manifest_present
+    assert not result.meta_evaluated

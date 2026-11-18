@@ -4,3 +4,7 @@
 
 class BenchmarkError(Exception):
     """Entrada inválida ou amostra insuficiente para executar o benchmark."""
+
+
+class LoginNeededError(BenchmarkError):
+    """Sem conta ativa ou sessão expirada: a CLI instrui o login e encerra com exit 4."""

@@ -6,7 +6,7 @@ import pytest
 from spikes.embedding_benchmark import bench, report
 from spikes.embedding_benchmark.models import DeviceChoice, parse_model_specs
 
-from tests.unit.spikes.support import FakeModel, fake_loader, write_dataset
+from tests.unit.spikes.support import FakeModel, fake_loader, write_dataset, write_sample_layout
 
 COLUMNS = (
     "Modelo",
@@ -265,3 +265,87 @@ def test_render_report_formata_percentual_nos_extremos(value: float) -> None:
     text = report.render_report(_result((_row(accuracy=value),)))
 
     assert ("0,0%" if value == 0.0 else "100,0%") in text
+
+
+def test_recommend_ignora_linhas_com_metadados_que_sao_so_informativas() -> None:
+    rows = [
+        _row("m", removable_precision=0.95),
+        _row("m", removable_precision=1.0, with_meta=True),
+    ]
+
+    result = report.recommend(rows)
+
+    assert result.row is not None
+    assert result.row.with_meta is False
+    assert result.row.removable_precision == 0.95
+
+
+def test_recommend_so_com_linhas_de_metadados_nao_recomenda() -> None:
+    result = report.recommend([_row("m", with_meta=True)])
+
+    assert result.row is None
+
+
+def test_render_report_identifica_linhas_com_metadados_e_origem_das_miniaturas() -> None:
+    rows = (_row("m"), _row("m", with_meta=True))
+    result = _result(
+        rows,
+        manifest_present=True,
+        meta_evaluated=True,
+        custom_size_supported=False,
+        real_thumbnails=((384, 180), (800, 180)),
+    )
+
+    text = report.render_report(result)
+
+    assert "| m + meta | 384 |" in text
+    assert "(`custom_size_supported`): não (cWxH gerado a partir da large)." in text
+    assert "384 px: 180/180, 800 px: 180/180" in text
+    assert "Linhas `+ meta`" in text
+    assert "Variante com metadados não avaliada" not in text
+
+
+@pytest.mark.parametrize(
+    ("supported", "expected"),
+    [(True, ": sim."), (None, ": não verificado.")],
+)
+def test_render_report_registra_custom_size_supported(
+    supported: bool | None, expected: str
+) -> None:
+    text = report.render_report(
+        _result((_row(),), manifest_present=True, custom_size_supported=supported)
+    )
+
+    assert f"(`custom_size_supported`){expected}" in text
+
+
+def test_render_report_sem_manifesto_nao_cita_miniaturas_nem_metadados() -> None:
+    text = report.render_report(_result((_row(),)))
+
+    assert "custom_size_supported" not in text
+    assert "_thumbs/" not in text
+
+
+def test_render_report_avisa_quando_metadados_nao_foram_avaliados() -> None:
+    text = report.render_report(_result((_row(),), manifest_present=True, meta_evaluated=False))
+
+    assert "Variante com metadados não avaliada" in text
+
+
+def test_render_report_do_layout_do_sample_nao_vaza_ids_nem_nomes(tmp_path: Path) -> None:
+    write_sample_layout(tmp_path, 6)
+    config = bench.BenchConfig(
+        data_dir=tmp_path,
+        models=parse_model_specs("clip-b32"),
+        sizes=(64,),
+        device=DeviceChoice("cpu", fallback=False),
+        requested_device="cpu",
+    )
+    result = bench.run_benchmark(config, fake_loader({"ViT-B-32": FakeModel()}))
+
+    text = report.render_report(result)
+
+    assert "FAKE-0000" not in text
+    assert "000001" not in text
+    assert str(tmp_path) not in text
+    assert "+ meta" in text
