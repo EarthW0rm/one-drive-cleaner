@@ -1,0 +1,154 @@
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11.0"]
+build-backend = "uv_build"
+
+[project]
+name = "onedrive-cleaner"
+version = "0.1.0"
+description = "Identifica imagens que não são fotos no OneDrive pessoal e as move para quarentena reversível."
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.scripts]
+odc = "odc.cli:main"
+
+[tool.uv]
+required-version = ">=0.10.8"
+
+[tool.uv.build-backend]
+module-name = "odc"
+
+[dependency-groups]
+dev = [
+    "deptry",
+    "import-linter",
+    "mypy",
+    "pip-audit",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "respx",
+    "ruff",
+    "vulture",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "SIM", "C4", "PL", "RUF", "N",
+    "ANN", "S", "PT", "ASYNC", "PERF", "ERA", "T20", "C901",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+# Asserts e valores literais são idiomáticos em testes; as demais regras seguem ativas.
+"tests/**" = ["S101", "PLR2004"]
+
+[tool.mypy]
+strict = true
+disallow_any_explicit = true
+disallow_any_generics = true
+warn_unreachable = true
+files = ["src", "scripts", "tests"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--cov=odc",
+    "--cov=scripts",
+    "--cov-branch",
+    "--cov-fail-under=90",
+]
+markers = [
+    "model: testes do aprendizado (qualidade do modelo)",
+    "perf: testes de desempenho",
+    "integration: integração backend com Graph fake in-process",
+    "resilience: falhas e interrupções",
+    "volume: volumetria (50 mil itens)",
+]
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "src/odc/cli.py",
+    "src/odc/storage/migrations/versions/*",
+]
+disable_warnings = ["module-not-imported"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_also = ["if __name__ == .__main__.:"]
+
+[tool.importlinter]
+root_package = "odc"
+include_external_packages = false
+
+[[tool.importlinter.contracts]]
+name = "Camadas do monolito modular"
+type = "layers"
+layers = [
+    "odc.web",
+    "odc.jobs",
+    "odc.quarantine | odc.scanning | odc.cleanup",
+    "odc.ml",
+    "odc.features",
+    "odc.graph | odc.storage",
+    "odc.auth",
+]
+
+[[tool.importlinter.contracts]]
+name = "graph, storage e auth não importam web"
+type = "forbidden"
+source_modules = ["odc.graph", "odc.storage", "odc.auth"]
+forbidden_modules = ["odc.web"]
+
+[[tool.importlinter.contracts]]
+name = "ml não importa graph"
+type = "forbidden"
+source_modules = ["odc.ml"]
+forbidden_modules = ["odc.graph"]
+
+[[tool.importlinter.contracts]]
+name = "telemetry é transversal e não depende de módulos de domínio"
+type = "forbidden"
+source_modules = ["odc.telemetry"]
+forbidden_modules = [
+    "odc.web", "odc.auth", "odc.graph", "odc.scanning", "odc.features",
+    "odc.ml", "odc.jobs", "odc.quarantine", "odc.storage", "odc.cleanup",
+]
+
+[[tool.importlinter.contracts]]
+name = "Módulos de domínio independentes entre si"
+type = "independence"
+modules = ["odc.quarantine", "odc.scanning", "odc.cleanup"]
+
+[tool.deptry]
+known_first_party = ["odc"]
+extend_exclude = ["scripts", "tests"]
+
+[tool.vulture]
+paths = ["src", "scripts"]
+min_confidence = 80
+
+[tool.odc.test-pairs]
+# Módulos de produção isentos de teste unitário pareado (plan 10.1).
+exclude = [
+    "src/odc/cli.py",
+    "src/odc/storage/migrations/versions/*",
+]
