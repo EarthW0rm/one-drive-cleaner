@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 from odc.bootstrap import EXIT_FAILURE, BootstrapError, bootstrap, run
 from odc.config import ConfigError, load_settings
+from odc.jobs.startup import RequeueOrphansHook
 from odc.telemetry.logging import configure_logging
 
 PACKAGE_NAME = "onedrive-cleaner"
@@ -51,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_FAILURE
     logging_handle = configure_logging(settings)
     try:
-        runtime = bootstrap(settings)
+        runtime = bootstrap(settings, hooks=(RequeueOrphansHook(),))
         return run(runtime, open_browser=settings.open_browser)
     except BootstrapError as error:
         _eprint(str(error))
