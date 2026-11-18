@@ -10,7 +10,11 @@ readme = "README.md"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "platformdirs>=4.14.7",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.3",
+]
 
 [project.scripts]
 odc = "odc.cli:main"
@@ -147,6 +151,9 @@ extend_exclude = ["scripts", "tests"]
 [tool.vulture]
 paths = ["src", "scripts"]
 min_confidence = 80
+# Parâmetros exigidos pelas assinaturas de BaseSettings.settings_customise_sources e
+# PydanticBaseSettingsSource.get_field_value: o pydantic-settings os passa por nome.
+ignore_names = ["cls", "dotenv_settings", "file_secret_settings", "field"]
 
 [tool.odc.test-pairs]
 # Módulos de produção isentos de teste unitário pareado (plan 10.1).
