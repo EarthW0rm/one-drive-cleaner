@@ -389,3 +389,29 @@ class RestoreGraphFake:
 
 def forbidden() -> GraphClientError:
     return GraphClientError(403, "accessDenied")
+
+
+@dataclass
+class DeleteGraphFake:
+    """Graph roteirizada para a exclusão: `get_item` e `delete` (com `If-Match`) em memória."""
+
+    remote: dict[str, DriveItem | BaseException | None] = field(default_factory=dict)
+    delete_errors: dict[str, BaseException] = field(default_factory=dict)
+    deletes: list[tuple[str, str]] = field(default_factory=list)
+    gets: list[str] = field(default_factory=list)
+
+    async def get_item(self, item_id: str) -> DriveItem:
+        self.gets.append(item_id)
+        found = self.remote.get(item_id)
+        if found is None:
+            raise GraphNotFound(404, "itemNotFound")
+        if isinstance(found, BaseException):
+            raise found
+        return found
+
+    async def delete(self, item_id: str, etag: str) -> None:
+        self.deletes.append((item_id, etag))
+        error = self.delete_errors.get(item_id)
+        if error is not None:
+            raise error
+        self.remote.pop(item_id, None)

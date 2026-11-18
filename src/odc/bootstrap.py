@@ -39,6 +39,7 @@ from odc.jobs.resumer import JobResumer
 from odc.jobs.runner import JobRunner
 from odc.jobs.supervisor import JobSupervisor
 from odc.jobs.types import JobType
+from odc.quarantine.confirmation import ConfirmationStore
 from odc.quarantine.folders import AppFolders
 from odc.quarantine.journal import JournalPendingSource
 from odc.scanning.scanner import ScanLastSuccessSource
@@ -170,11 +171,13 @@ def bootstrap(  # noqa: PLR0913 - composição: hooks, telemetria, auth e handle
         message = f"falha na migração do banco ({error.code})."
         raise BootstrapError(EXIT_FAILURE, message) from error
     graph = _graph_client(auth, metrics)
+    confirmations = ConfirmationStore(database)
     jobs = _job_supervisor(
         database,
         telemetry,
         metrics,
         graph,
+        confirmations,
         handlers=handlers or {},
         factories=handler_factories or {},
     )
@@ -187,6 +190,7 @@ def bootstrap(  # noqa: PLR0913 - composição: hooks, telemetria, auth e handle
             jobs=jobs,
             graph=graph,
             app_folders=AppFolders(database, graph) if graph is not None else None,
+            confirmations=confirmations,
         ),
     )
     instrument_all(app, telemetry, httpx_hooks)
@@ -221,13 +225,21 @@ def _job_supervisor(  # noqa: PLR0913 - composição do runner com as dependênc
     telemetry: TelemetryHandle,
     metrics: Metrics,
     graph: GraphClient | None,
+    confirmations: ConfirmationStore,
     *,
     handlers: Mapping[JobType, Handler],
     factories: Mapping[JobType, HandlerFactory],
 ) -> JobSupervisor:
     queue = JobQueue(database, metrics=metrics)
     tracer = telemetry.tracer_provider.get_tracer(TRACER_NAME)
-    deps = HandlerDeps(database=database, queue=queue, graph=graph, metrics=metrics, tracer=tracer)
+    deps = HandlerDeps(
+        database=database,
+        queue=queue,
+        graph=graph,
+        metrics=metrics,
+        tracer=tracer,
+        confirmations=confirmations,
+    )
     built = {job_type: factory(deps) for job_type, factory in factories.items()}
     resolved: dict[JobType, Handler] = {
         job_type: handler for job_type, handler in built.items() if handler is not None

@@ -41,6 +41,7 @@ from odc.jobs.handler import HandlerDeps, HandlerFactory, JobContext
 from odc.jobs.payloads import ScanPayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType
+from odc.quarantine.confirmation import ConfirmationStore
 from odc.quarantine.journal import JournalPendingSource
 from odc.scanning.scanner import ScanLastSuccessSource
 from odc.storage import account_db as account_db_module
@@ -579,6 +580,7 @@ def test_fabricas_recebem_dependencias_e_handler_explicito_prevalece(
         assert isinstance(received[0].graph, GraphClient)
         assert received[0].metrics is not None
         assert received[0].tracer is not None
+        assert isinstance(received[0].confirmations, ConfirmationStore)
     finally:
         created.engine.dispose()
 

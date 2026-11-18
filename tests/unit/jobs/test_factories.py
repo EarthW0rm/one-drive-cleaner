@@ -6,22 +6,27 @@ from odc.cleanup.handler import CleanupHandler
 from odc.graph.client import GraphClient
 from odc.graph.http import GRAPH_BASE_URL, GraphHttp
 from odc.graph.limiter import AimdLimiter
+from odc.jobs.errors import FatalJobError
 from odc.jobs.factories import (
     HANDLER_FACTORIES,
     cleanup_handler,
+    delete_handler,
     move_handler,
     reconcile_handler,
     restore_handler,
     scan_handler,
 )
 from odc.jobs.handler import HandlerDeps
+from odc.jobs.payloads import DeletePayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType
+from odc.quarantine.confirmation import ConfirmationStore
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler
 from odc.quarantine.restore import RestoreHandler
 from odc.scanning.scanner import ScanHandler
 from tests.unit.jobs.conftest import EngineHolder
+from tests.unit.scanning.support import FakeContext
 
 
 class _Tokens:
@@ -135,3 +140,66 @@ def test_fabrica_de_restore_monta_o_handler_com_a_graph(
 
 def test_registro_padrao_inclui_a_restauracao() -> None:
     assert HANDLER_FACTORIES[JobType.RESTORE] is restore_handler
+
+
+def _delete_deps(
+    base: HandlerDeps, *, graph: GraphClient | None, confirmations: ConfirmationStore | None
+) -> HandlerDeps:
+    return HandlerDeps(
+        database=base.database,
+        queue=base.queue,
+        graph=graph,
+        metrics=None,
+        tracer=None,
+        confirmations=confirmations,
+    )
+
+
+def test_fabrica_de_delete_exige_cliente_da_graph(deps_without_graph: HandlerDeps) -> None:
+    confirmations = ConfirmationStore(deps_without_graph.database)
+
+    assert (
+        delete_handler(_delete_deps(deps_without_graph, graph=None, confirmations=confirmations))
+        is None
+    )
+
+
+def test_fabrica_de_delete_exige_o_armazem_de_confirmacoes(
+    deps_without_graph: HandlerDeps, graph: GraphClient
+) -> None:
+    assert delete_handler(_delete_deps(deps_without_graph, graph=graph, confirmations=None)) is None
+
+
+def test_fabrica_de_delete_monta_o_handler_com_graph_e_confirmacoes(
+    deps_without_graph: HandlerDeps, graph: GraphClient
+) -> None:
+    deps = _delete_deps(
+        deps_without_graph,
+        graph=graph,
+        confirmations=ConfirmationStore(deps_without_graph.database),
+    )
+
+    assert delete_handler(deps) is not None
+
+
+def test_registro_padrao_inclui_a_exclusao() -> None:
+    assert HANDLER_FACTORIES[JobType.DELETE] is delete_handler
+
+
+@pytest.mark.asyncio
+async def test_confirmacao_invalida_vira_falha_definitiva_sem_nova_tentativa(
+    deps_without_graph: HandlerDeps, graph: GraphClient
+) -> None:
+    deps = _delete_deps(
+        deps_without_graph,
+        graph=graph,
+        confirmations=ConfirmationStore(deps_without_graph.database),
+    )
+    handler = delete_handler(deps)
+    assert handler is not None
+    ctx = FakeContext(payload=DeletePayload(item_ids=[1], confirmation_id="FAKE-NAO-CONFIRMADO"))
+
+    with pytest.raises(FatalJobError) as raised:
+        await handler.run(ctx)  # type: ignore[arg-type]
+
+    assert raised.value.error_code == "INVALID_CONFIRMATION"

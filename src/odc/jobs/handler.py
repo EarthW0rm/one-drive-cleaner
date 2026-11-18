@@ -22,6 +22,7 @@ from odc.jobs.errors import INVALID_PAYLOAD, FatalJobError, JobInterrupted
 from odc.jobs.payloads import Payload
 from odc.jobs.queue import EngineSource, JobQueue
 from odc.jobs.types import JobType
+from odc.quarantine.confirmation import ConfirmationStore
 from odc.telemetry.metrics import Metrics
 
 type CheckpointWriter = Callable[[int, Mapping[str, object]], Awaitable[None]]
@@ -100,6 +101,8 @@ class HandlerDeps:
 
     `graph` é `None` quando não há cliente da Graph (gateway de autenticação sem token, testes):
     a fábrica de um handler que depende dela devolve `None` e o tipo fica sem handler.
+    `confirmations` é o armazém de confirmações de exclusão compartilhado com a rota de
+    confirmação (RN-20); sem ele o job `delete` não tem handler.
     """
 
     database: EngineSource
@@ -107,6 +110,7 @@ class HandlerDeps:
     graph: GraphClient | None
     metrics: Metrics | None
     tracer: Tracer | None
+    confirmations: ConfirmationStore | None = None
 
 
 type HandlerFactory = Callable[[HandlerDeps], Handler | None]

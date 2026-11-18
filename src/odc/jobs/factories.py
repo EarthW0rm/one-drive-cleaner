@@ -11,8 +11,10 @@ from collections.abc import Mapping
 from odc.cleanup.handler import CleanupHandler
 from odc.cleanup.service import CleanupService
 from odc.graph.client import GraphClient
-from odc.jobs.handler import Handler, HandlerDeps, HandlerFactory
+from odc.jobs.errors import FatalJobError
+from odc.jobs.handler import Handler, HandlerDeps, HandlerFactory, JobContext
 from odc.jobs.types import JobType
+from odc.quarantine.delete import DeleteHandler, InvalidConfirmationError
 from odc.quarantine.folders import AppFolders
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler, Reconciler
@@ -76,18 +78,52 @@ def restore_handler(deps: HandlerDeps) -> Handler | None:
     )
 
 
+class _DeleteJobHandler:
+    """Adapta `DeleteHandler` ao runner: confirmação inválida é falha definitiva, sem retry."""
+
+    def __init__(self, inner: DeleteHandler) -> None:
+        self._inner = inner
+
+    async def run(self, ctx: JobContext) -> None:
+        try:
+            await self._inner.run(ctx)
+        except InvalidConfirmationError as error:
+            raise FatalJobError(error.error_code) from error
+
+
+def delete_handler(deps: HandlerDeps) -> Handler | None:
+    """`DeleteHandler` (worker de ações): exige Graph e o armazém de confirmações (RN-20)."""
+    if deps.graph is None or deps.confirmations is None:
+        return None
+    folders = AppFolders(deps.database, deps.graph)
+    reconciler = _reconciler(deps, deps.graph, folders)
+    return _DeleteJobHandler(
+        DeleteHandler(
+            deps.database,
+            deps.graph,
+            folders,
+            reconciler,
+            deps.confirmations,
+            metrics=deps.metrics,
+            tracer=deps.tracer,
+        )
+    )
+
+
 HANDLER_FACTORIES: Mapping[JobType, HandlerFactory] = {
     JobType.SCAN: scan_handler,
     JobType.CLEANUP: cleanup_handler,
     JobType.RECONCILE: reconcile_handler,
     JobType.MOVE: move_handler,
     JobType.RESTORE: restore_handler,
+    JobType.DELETE: delete_handler,
 }
 
 
 __all__ = [
     "HANDLER_FACTORIES",
     "cleanup_handler",
+    "delete_handler",
     "move_handler",
     "reconcile_handler",
     "restore_handler",
