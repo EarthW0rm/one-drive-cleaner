@@ -11,13 +11,18 @@ o handler consulta `ctx.cancelled` entre unidades de trabalho, salva o checkpoin
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import Executor
+from dataclasses import dataclass
 from typing import Protocol
 
+from opentelemetry.trace import Tracer
 from pydantic import BaseModel
 
+from odc.graph.client import GraphClient
 from odc.jobs.errors import INVALID_PAYLOAD, FatalJobError, JobInterrupted
 from odc.jobs.payloads import Payload
+from odc.jobs.queue import EngineSource, JobQueue
 from odc.jobs.types import JobType
+from odc.telemetry.metrics import Metrics
 
 type CheckpointWriter = Callable[[int, Mapping[str, object]], Awaitable[None]]
 
@@ -87,3 +92,21 @@ class Handler(Protocol):
     """Executor de um tipo de job. Exceções viram decisões do runner (ver `odc.jobs.errors`)."""
 
     async def run(self, ctx: JobContext) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class HandlerDeps:
+    """Serviços montados no bootstrap que os handlers recebem na construção.
+
+    `graph` é `None` quando não há cliente da Graph (gateway de autenticação sem token, testes):
+    a fábrica de um handler que depende dela devolve `None` e o tipo fica sem handler.
+    """
+
+    database: EngineSource
+    queue: JobQueue
+    graph: GraphClient | None
+    metrics: Metrics | None
+    tracer: Tracer | None
+
+
+type HandlerFactory = Callable[[HandlerDeps], Handler | None]

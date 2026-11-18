@@ -129,3 +129,67 @@ def test_mark_failure_valida_motivo_e_existencia(session: Session, make_item: It
         items.mark_failure(session, created.id, "outro", now=NOW)
     with pytest.raises(NotFoundError):
         items.mark_failure(session, 999, "no_thumbnail", now=NOW)
+
+
+def test_reset_for_analysis_volta_a_descoberto_e_zera_falhas(
+    session: Session, make_item: ItemFactory
+) -> None:
+    failed = make_item("DESCOBERTO")
+    items.mark_failure(session, failed.id, "decode_error", now=NOW)
+
+    items.reset_for_analysis(session, failed.id, now=LATER)
+
+    found = items.get(session, failed.id)
+    assert found is not None
+    assert (found.state, found.failure_reason, found.failure_count) == ("DESCOBERTO", None, 0)
+    assert found.updated_at == LATER
+
+
+def test_reset_for_analysis_item_inexistente(session: Session) -> None:
+    with pytest.raises(NotFoundError):
+        items.reset_for_analysis(session, 9999, now=NOW)
+
+
+def test_get_many_by_drive_ids_ignora_ausentes_e_repetidos(
+    session: Session, make_item: ItemFactory
+) -> None:
+    a, b = make_item("DESCOBERTO"), make_item("ANALISADO")
+    wanted = [a.drive_item_id, "nope", a.drive_item_id, b.drive_item_id]
+
+    found = items.get_many_by_drive_ids(session, wanted)
+
+    assert {key: row.id for key, row in found.items()} == {
+        a.drive_item_id: a.id,
+        b.drive_item_id: b.id,
+    }
+
+
+def test_get_many_by_drive_ids_vazio(session: Session) -> None:
+    assert items.get_many_by_drive_ids(session, []) == {}
+
+
+def test_list_ids_in_roots_filtra_raiz_estado_e_instante(
+    session: Session, root: ScanRootRow, make_item: ItemFactory
+) -> None:
+    old = make_item("SUGERIDO")
+    quarantined = make_item("QUARENTENA")
+    recent = items.upsert_from_delta(session, _delta(root, drive_item_id="d-new"), now=LATER)
+
+    every = items.list_ids_in_roots(session, [root.id], ["SUGERIDO", "DESCOBERTO"])
+    before = items.list_ids_in_roots(
+        session, [root.id], ["SUGERIDO", "DESCOBERTO"], updated_before=LATER
+    )
+
+    assert every == [old.id, recent.id]
+    assert before == [old.id]
+    assert quarantined.id not in every
+
+
+def test_list_ids_in_roots_sem_raizes_ou_estados(session: Session, root: ScanRootRow) -> None:
+    assert items.list_ids_in_roots(session, [], ["SUGERIDO"]) == []
+    assert items.list_ids_in_roots(session, [root.id], []) == []
+
+
+def test_list_ids_in_roots_rejeita_estado_invalido(session: Session, root: ScanRootRow) -> None:
+    with pytest.raises(StorageValidationError):
+        items.list_ids_in_roots(session, [root.id], ["NOPE"])

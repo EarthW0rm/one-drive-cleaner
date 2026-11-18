@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
+from collections.abc import Callable
+
 import pytest
 from sqlalchemy.orm import Session
 
+from odc.storage.dto import ItemRow
 from odc.storage.errors import NotFoundError, StorageValidationError
 from odc.storage.repositories import journal
 
@@ -76,3 +79,21 @@ def test_list_by_phase_mais_antigas_primeiro(session: Session) -> None:
     assert len(journal.list_by_phase(session, "intent", limit=1)) == 1
     with pytest.raises(StorageValidationError):
         journal.list_by_phase(session, "x", limit=1)
+
+
+def test_pending_item_ids_lista_so_itens_com_intencao_aberta(
+    session: Session, make_item: Callable[[str], ItemRow]
+) -> None:
+    open_item, done_item, free_item = (make_item("SUGERIDO") for _ in range(3))
+    journal.begin(session, op_id="a", operation="move", now=T1, item_id=open_item.id)
+    journal.begin(session, op_id="b", operation="move", now=T1, item_id=done_item.id)
+    journal.set_phase(session, "b", "done", now=T2)
+    journal.begin(session, op_id="c", operation="ensure_folder", now=T1)
+
+    pending = journal.pending_item_ids(session, [open_item.id, done_item.id, free_item.id])
+
+    assert pending == frozenset({open_item.id})
+
+
+def test_pending_item_ids_sem_itens(session: Session) -> None:
+    assert journal.pending_item_ids(session, []) == frozenset()

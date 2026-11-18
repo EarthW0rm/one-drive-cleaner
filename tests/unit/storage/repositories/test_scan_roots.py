@@ -70,3 +70,19 @@ def test_set_display_path(session: Session, root: ScanRootRow) -> None:
     assert scan_roots.get(session, root.id).display_path == "/Fotos/Camera Roll"  # type: ignore[union-attr]
     with pytest.raises(NotFoundError):
         scan_roots.set_display_path(session, 999, "/x")
+
+
+def test_clear_links_descarta_next_e_delta_link(session: Session, root: ScanRootRow) -> None:
+    scan_roots.save_delta_link(session, root.id, "delta", now=NOW)
+    scan_roots.save_next_link(session, root.id, "next")
+
+    scan_roots.clear_links(session, root.id)
+
+    found = scan_roots.get(session, root.id)
+    assert found is not None
+    assert (found.next_link, found.delta_link, found.last_delta_at) == (None, None, NOW)
+
+
+def test_clear_links_de_raiz_inexistente(session: Session) -> None:
+    with pytest.raises(NotFoundError):
+        scan_roots.clear_links(session, 9999)

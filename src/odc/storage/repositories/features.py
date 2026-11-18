@@ -6,13 +6,13 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from odc.storage.dto import FeatureRow
 from odc.storage.errors import NotFoundError, StorageValidationError
-from odc.storage.repositories._common import dto_columns, to_dto
+from odc.storage.repositories._common import dto_columns, execute_dml, to_dto
 from odc.storage.tables import embedding_model, feature
 
 _META_COLUMNS = dto_columns(feature, FeatureRow)
@@ -123,3 +123,13 @@ def get(session: Session, item_id: int) -> FeatureRow | None:
     """Metadados da extração (sem os blobs)."""
     row = session.execute(select(*_META_COLUMNS).where(feature.c.item_id == item_id)).first()
     return None if row is None else to_dto(FeatureRow, row)
+
+
+def delete_for_items(session: Session, item_ids: Sequence[int]) -> int:
+    """Remove as features dos itens (conteúdo mudou: reextração); devolve quantas removeu."""
+    removed = 0
+    for start in range(0, len(item_ids), _CHUNK):
+        chunk = list(item_ids[start : start + _CHUNK])
+        stmt = delete(feature).where(feature.c.item_id.in_(chunk))
+        removed += execute_dml(session, stmt).rowcount
+    return removed

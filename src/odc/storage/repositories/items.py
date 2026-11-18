@@ -14,6 +14,7 @@ from odc.storage.repositories._common import dto_columns, execute_dml, to_dto
 from odc.storage.tables import FAILURE_REASONS, ITEM_STATES, item
 
 _COLUMNS = dto_columns(item, ItemRow)
+_CHUNK = 500
 _MUTABLE = (
     "scan_root_id",
     "parent_id",
@@ -122,6 +123,55 @@ def list_ids_by_state(
 def count_by_state(session: Session) -> dict[str, int]:
     stmt = select(item.c.state, func.count()).group_by(item.c.state)
     return dict(session.execute(stmt).all())
+
+
+def reset_for_analysis(session: Session, item_id: int, *, now: str) -> None:
+    """Volta a `DESCOBERTO` para reanálise (conteúdo novo): limpa motivo e contagem de falhas."""
+    result = execute_dml(
+        session,
+        update(item)
+        .where(item.c.id == item_id)
+        .values(state="DESCOBERTO", failure_reason=None, failure_count=0, updated_at=now),
+    )
+    if result.rowcount == 0:
+        raise NotFoundError("item inexistente")
+
+
+def get_many_by_drive_ids(session: Session, drive_item_ids: Sequence[str]) -> dict[str, ItemRow]:
+    """Itens existentes por `drive_item_id` (consulta em blocos; ids ausentes ficam de fora)."""
+    found: dict[str, ItemRow] = {}
+    unique = list(dict.fromkeys(drive_item_ids))
+    for start in range(0, len(unique), _CHUNK):
+        chunk = unique[start : start + _CHUNK]
+        stmt = select(*_COLUMNS).where(item.c.drive_item_id.in_(chunk))
+        for row in session.execute(stmt):
+            dto = to_dto(ItemRow, row)
+            found[dto.drive_item_id] = dto
+    return found
+
+
+def list_ids_in_roots(
+    session: Session,
+    scan_root_ids: Sequence[int],
+    states: Sequence[str],
+    *,
+    updated_before: str | None = None,
+) -> Sequence[int]:
+    """Ids dos itens das raízes nos `states` (opcionalmente só os não tocados desde um instante).
+
+    `updated_before` identifica itens não vistos numa varredura completa iniciada naquele
+    instante (toda imagem vista é regravada com `updated_at` posterior).
+    """
+    for state in states:
+        _require_state(state)
+    if not scan_root_ids or not states:
+        return []
+    stmt = select(item.c.id).where(
+        item.c.scan_root_id.in_(list(scan_root_ids)), item.c.state.in_(list(states))
+    )
+    if updated_before is not None:
+        stmt = stmt.where(item.c.updated_at < updated_before)
+    return list(session.execute(stmt.order_by(item.c.id)).scalars())
 
 
 def mark_failure(session: Session, item_id: int, reason: str, *, now: str) -> None:

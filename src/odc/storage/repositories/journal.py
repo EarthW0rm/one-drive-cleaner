@@ -13,6 +13,7 @@ from odc.storage.repositories._common import dto_columns, execute_dml, to_dto
 from odc.storage.tables import JOURNAL_OPERATIONS, JOURNAL_PHASES, journal
 
 _COLUMNS = dto_columns(journal, JournalRow)
+_CHUNK = 500
 
 
 def begin(
@@ -83,3 +84,16 @@ def list_by_phase(session: Session, phase: str, *, limit: int) -> Sequence[Journ
         .limit(limit)
     )
     return [to_dto(JournalRow, r) for r in session.execute(stmt)]
+
+
+def pending_item_ids(session: Session, item_ids: Sequence[int]) -> frozenset[int]:
+    """Itens com operação do app ainda em `intent` (mover/restaurar/excluir em andamento)."""
+    pending: set[int] = set()
+    unique = list(dict.fromkeys(item_ids))
+    for start in range(0, len(unique), _CHUNK):
+        chunk = unique[start : start + _CHUNK]
+        stmt = select(journal.c.item_id).where(
+            journal.c.phase == "intent", journal.c.item_id.in_(chunk)
+        )
+        pending.update(int(value) for value in session.execute(stmt).scalars() if value is not None)
+    return frozenset(pending)

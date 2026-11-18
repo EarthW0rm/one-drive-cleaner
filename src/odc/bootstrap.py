@@ -30,16 +30,18 @@ from odc.config import AppSettings
 from odc.graph.client import GraphClient
 from odc.graph.http import GRAPH_BASE_URL, GraphHttp
 from odc.graph.limiter import AimdLimiter
-from odc.jobs.handler import Handler
+from odc.jobs.handler import Handler, HandlerDeps, HandlerFactory
 from odc.jobs.queue import JobQueue
 from odc.jobs.resumer import JobResumer
 from odc.jobs.runner import JobRunner
 from odc.jobs.supervisor import JobSupervisor
 from odc.jobs.types import JobType
+from odc.scanning.scanner import ScanLastSuccessSource
 from odc.storage.account_db import AccountDatabase
 from odc.storage.migrate import MigrationError
 from odc.telemetry.instrument import HttpxHooks, instrument_all
 from odc.telemetry.metrics import Metrics
+from odc.telemetry.observables import ObservableName, ObservableRegistry
 from odc.telemetry.setup import TelemetryHandle, init_telemetry
 from odc.telemetry.tracing import TRACER_NAME
 from odc.web.app import create_app
@@ -132,18 +134,22 @@ def _startup_account(auth: AuthGateway) -> Account | None:
         return None
 
 
-def bootstrap(
+def bootstrap(  # noqa: PLR0913 - composição: hooks, telemetria, auth e handlers injetáveis
     settings: AppSettings,
     hooks: Sequence[StartupHook] = (),
     httpx_hooks: HttpxHooks | None = None,
     auth: AuthGateway | None = None,
     handlers: Mapping[JobType, Handler] | None = None,
+    *,
+    handler_factories: Mapping[JobType, HandlerFactory] | None = None,
 ) -> Runtime:
     """Inicializa a telemetria, abre o banco, executa os hooks e monta a aplicação FastAPI.
 
     O banco é o da conta ativa (se houver) ou o local anterior ao login. A telemetria nunca
     impede a inicialização (RN-25); sem `client_id` o app sobe e o login responde
-    `not_configured`. O runner de jobs (`handlers` por tipo) sobe com o servidor (lifespan).
+    `not_configured`. O runner de jobs sobe com o servidor (lifespan) com os `handlers` por tipo
+    mais os construídos por `handler_factories` (que recebem fila, Graph e telemetria); um
+    handler explícito prevalece sobre a fábrica do mesmo tipo.
     """
     telemetry = init_telemetry(settings, _package_version())
     metrics = Metrics.create(telemetry.meter_provider)
@@ -158,8 +164,16 @@ def bootstrap(
         telemetry.shutdown()
         message = f"falha na migração do banco ({error.code})."
         raise BootstrapError(EXIT_FAILURE, message) from error
-    jobs = _job_supervisor(database, telemetry, metrics, handlers or {})
     graph = _graph_client(auth, metrics)
+    jobs = _job_supervisor(
+        database,
+        telemetry,
+        metrics,
+        graph,
+        handlers=handlers or {},
+        factories=handler_factories or {},
+    )
+    _register_observables(telemetry, database)
     app = create_app(settings, AppServices(database=database, auth=auth, jobs=jobs, graph=graph))
     instrument_all(app, telemetry, httpx_hooks)
     runtime = Runtime(settings=settings, database=database, app=app, telemetry=telemetry)
@@ -180,19 +194,30 @@ def _graph_client(auth: AuthGateway, metrics: Metrics) -> GraphClient | None:
     return GraphClient(GraphHttp(GRAPH_BASE_URL, auth, limiter, metrics=metrics))
 
 
-def _job_supervisor(
+def _register_observables(telemetry: TelemetryHandle, database: AccountDatabase) -> None:
+    """Gauges observáveis lidos do banco vigente (coleta periódica do OTel)."""
+    registry = ObservableRegistry(telemetry.meter_provider)
+    registry.register(ObservableName.SCAN_LAST_SUCCESS, ScanLastSuccessSource(database))
+
+
+def _job_supervisor(  # noqa: PLR0913 - composição do runner com as dependências do bootstrap
     database: AccountDatabase,
     telemetry: TelemetryHandle,
     metrics: Metrics,
+    graph: GraphClient | None,
+    *,
     handlers: Mapping[JobType, Handler],
+    factories: Mapping[JobType, HandlerFactory],
 ) -> JobSupervisor:
     queue = JobQueue(database, metrics=metrics)
-    runner = JobRunner(
-        queue,
-        handlers,
-        metrics=metrics,
-        tracer=telemetry.tracer_provider.get_tracer(TRACER_NAME),
-    )
+    tracer = telemetry.tracer_provider.get_tracer(TRACER_NAME)
+    deps = HandlerDeps(database=database, queue=queue, graph=graph, metrics=metrics, tracer=tracer)
+    built = {job_type: factory(deps) for job_type, factory in factories.items()}
+    resolved: dict[JobType, Handler] = {
+        job_type: handler for job_type, handler in built.items() if handler is not None
+    }
+    resolved.update(handlers)
+    runner = JobRunner(queue, resolved, metrics=metrics, tracer=tracer)
     resumer = JobResumer(queue, runner.notify, metrics=metrics)
     return JobSupervisor(database, queue, runner, resumer, metrics=metrics)
 

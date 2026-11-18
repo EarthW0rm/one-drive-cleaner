@@ -696,3 +696,45 @@ def test_release_devolve_job_a_fila_sem_tentativa_e_perde_posse(queue: JobQueue)
     assert (row.status, row.attempts) == ("queued", 0)
     assert queue.release(job_id) is False
     assert queue.heartbeat(job_id) is False
+
+
+# --- extract (varredura) ---
+
+
+def test_active_payloads_ignora_jobs_inativos_e_payload_corrompido(
+    queue: JobQueue, engine: Engine
+) -> None:
+    running = queue.enqueue(JobType.EXTRACT, ExtractPayload(item_ids=[1, 2]))
+    queue.claim_next()
+    done = queue.enqueue(JobType.EXTRACT, ExtractPayload(item_ids=[3]))
+    queue.enqueue(JobType.EXTRACT, ExtractPayload(item_ids=[4]))
+    with UnitOfWork(engine) as session:
+        jobs_repo.set_status(session, done, "done", now="2026-11-17T10:00:00.000000+00:00")
+    _insert_raw(engine, "extract", '{"item_ids": "x"}')
+
+    payloads = queue.active_payloads(JobType.EXTRACT)
+
+    assert queue.get(running).status == "running"  # type: ignore[union-attr]
+    assert payloads == [ExtractPayload(item_ids=[1, 2]), ExtractPayload(item_ids=[4])]
+
+
+def test_pending_extract_item_ids_une_itens_dos_jobs_ativos(queue: JobQueue) -> None:
+    queue.enqueue(JobType.EXTRACT, ExtractPayload(item_ids=[1, 2]))
+    queue.enqueue(JobType.EXTRACT, ExtractPayload(item_ids=[2, 5]))
+    queue.enqueue(JobType.SCAN, SCAN)
+
+    assert queue.pending_extract_item_ids() == frozenset({1, 2, 5})
+
+
+def test_enqueue_extract_divide_em_lotes_de_64_sem_repetir(queue: JobQueue) -> None:
+    ids = [*range(1, 131), 1, 2]
+
+    created = queue.enqueue_extract(ids)
+
+    payloads = [queue.get(job_id) for job_id in created]
+    sizes = [len(json.loads(row.payload)["item_ids"]) for row in payloads if row is not None]
+    assert sizes == [64, 64, 2]
+
+
+def test_enqueue_extract_sem_itens_nao_cria_job(queue: JobQueue) -> None:
+    assert queue.enqueue_extract([]) == []

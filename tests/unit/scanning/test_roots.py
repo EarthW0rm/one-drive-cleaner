@@ -210,7 +210,7 @@ class TestSetRoots:
 
         assert _roots(database) == [(child.id, False), (parent.id, True)]
 
-    async def test_kept_root_preserves_delta_link_and_is_reenabled(
+    async def test_kept_root_preserves_delta_link(
         self, service: ScanRootService, fake: GraphFake, database: _Database
     ) -> None:
         a = fake.drive.add_folder(ROOT_ID, "A")
@@ -218,13 +218,33 @@ class TestSetRoots:
         first = await service.set_roots([a.id])
         with UnitOfWork(database.engine) as session:
             scan_roots.save_delta_link(session, first[0].id, "delta-1", now="2026-11-17T10:00:00Z")
-        await service.set_roots([b.id])
 
         rows = await service.set_roots([a.id, b.id])
 
         assert {r.drive_item_id for r in rows} == {a.id, b.id}
         kept = next(r for r in rows if r.drive_item_id == a.id)
         assert (kept.id, kept.delta_link) == (first[0].id, "delta-1")
+
+    async def test_reenabled_root_keeps_id_and_drops_links_for_full_scan(
+        self, service: ScanRootService, fake: GraphFake, database: _Database
+    ) -> None:
+        a = fake.drive.add_folder(ROOT_ID, "A")
+        b = fake.drive.add_folder(ROOT_ID, "B")
+        first = await service.set_roots([a.id])
+        with UnitOfWork(database.engine) as session:
+            scan_roots.save_next_link(session, first[0].id, "next-1")
+            scan_roots.save_delta_link(session, first[0].id, "delta-1", now="2026-11-17T10:00:00Z")
+        await service.set_roots([b.id])
+
+        rows = await service.set_roots([a.id, b.id])
+
+        again = next(r for r in rows if r.drive_item_id == a.id)
+        assert (again.id, again.enabled, again.delta_link, again.next_link) == (
+            first[0].id,
+            True,
+            None,
+            None,
+        )
 
     async def test_refreshes_display_path_when_folder_moved(
         self, service: ScanRootService, fake: GraphFake

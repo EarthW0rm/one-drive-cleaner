@@ -155,3 +155,19 @@ def test_auto_candidates_somente_removiveis_sugeridas_acima_do_limiar(
 def test_auto_candidates_valida_limiar(session: Session, threshold: float) -> None:
     with pytest.raises(StorageValidationError):
         predictions.auto_candidates(session, threshold)
+
+
+def test_delete_for_items_remove_somente_os_itens_pedidos(
+    session: Session, make_item: ItemFactory, version_id: int
+) -> None:
+    ids = _seed(session, make_item, version_id, [0.2, 0.4, 0.6])
+
+    removed = predictions.delete_for_items(session, [ids[1], 9999])
+
+    rows = predictions.review_page(session, _cat(session, "screenshot")).rows
+    assert removed == 1
+    assert [row.item_id for row in rows] == [ids[0], ids[2]]
+
+
+def test_delete_for_items_sem_ids_nao_remove_nada(session: Session) -> None:
+    assert predictions.delete_for_items(session, []) == 0

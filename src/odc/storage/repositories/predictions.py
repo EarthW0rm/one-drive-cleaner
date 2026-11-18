@@ -11,12 +11,13 @@ from sqlalchemy.orm import Session
 from odc.storage.cursor import Cursor, decode_cursor, encode_cursor
 from odc.storage.dto import Page, PredictionRow
 from odc.storage.errors import StorageValidationError
-from odc.storage.repositories._common import dto_columns, to_dto
+from odc.storage.repositories._common import dto_columns, execute_dml, to_dto
 from odc.storage.tables import category, item, prediction
 
 _COLUMNS = dto_columns(prediction, PredictionRow)
 ReviewOrder = Literal["margin", "confidence"]
 MAX_PAGE_SIZE = 500
+_CHUNK = 500
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,3 +116,13 @@ def auto_candidates(session: Session, threshold: float) -> Sequence[PredictionRo
         .order_by(prediction.c.confidence.desc(), prediction.c.item_id)
     )
     return [to_dto(PredictionRow, r) for r in session.execute(stmt)]
+
+
+def delete_for_items(session: Session, item_ids: Sequence[int]) -> int:
+    """Remove as predições vigentes dos itens (voltaram a `DESCOBERTO`); devolve a quantidade."""
+    removed = 0
+    for start in range(0, len(item_ids), _CHUNK):
+        chunk = list(item_ids[start : start + _CHUNK])
+        stmt = delete(prediction).where(prediction.c.item_id.in_(chunk))
+        removed += execute_dml(session, stmt).rowcount
+    return removed

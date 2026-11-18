@@ -35,13 +35,16 @@ from odc.bootstrap import (
 )
 from odc.config import AppSettings
 from odc.graph.client import GraphClient
-from odc.jobs.handler import JobContext
+from odc.jobs.factories import HANDLER_FACTORIES
+from odc.jobs.handler import HandlerDeps, HandlerFactory, JobContext
 from odc.jobs.payloads import ScanPayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType
+from odc.scanning.scanner import ScanLastSuccessSource
 from odc.storage import account_db as account_db_module
 from odc.storage.migrate import MigrationError
 from odc.telemetry.metrics import Metrics
+from odc.telemetry.observables import ObservableName
 from odc.telemetry.setup import Exporters, TelemetryHandle, init_telemetry
 from odc.web.services import AuthGateway, LoginRequiredGateway
 
@@ -523,3 +526,101 @@ def test_run_com_conta_ativa_executa_jobs_pelo_runner_do_lifespan(
     assert result == EXIT_OK
     assert statuses == ["done"]
     assert len(scan.jobs) == 1
+
+
+class _RecordingRunner:
+    """Substitui o `JobRunner` para inspecionar os handlers resolvidos pelo bootstrap."""
+
+    created: list["_RecordingRunner"] = []  # noqa: RUF012 - registro dos testes
+
+    def __init__(self, queue: JobQueue, handlers: dict[JobType, object], **_: object) -> None:
+        self.queue = queue
+        self.handlers = dict(handlers)
+        type(self).created.append(self)
+
+    @property
+    def running(self) -> bool:
+        return False
+
+    def notify(self) -> None:
+        return None
+
+
+@pytest.fixture
+def recording_runner(monkeypatch: pytest.MonkeyPatch) -> type[_RecordingRunner]:
+    _RecordingRunner.created = []
+    monkeypatch.setattr(bootstrap_module, "JobRunner", _RecordingRunner)
+    return _RecordingRunner
+
+
+def test_fabricas_recebem_dependencias_e_handler_explicito_prevalece(
+    home: Path, free_port: int, recording_runner: type[_RecordingRunner]
+) -> None:
+    received: list[HandlerDeps] = []
+    explicit = _RecordingScan()
+    built = _RecordingScan()
+
+    def factory(deps: HandlerDeps) -> _RecordingScan:
+        received.append(deps)
+        return built
+
+    created = bootstrap(
+        AppSettings(port=free_port, otel_enabled=False),
+        handlers={JobType.SCAN: explicit},
+        handler_factories={JobType.SCAN: factory, JobType.TRAIN: built_factory(built)},
+    )
+    try:
+        handlers = recording_runner.created[0].handlers
+        assert handlers == {JobType.SCAN: explicit, JobType.TRAIN: built}
+        assert received[0].database is created.database
+        assert received[0].queue is recording_runner.created[0].queue
+        assert isinstance(received[0].graph, GraphClient)
+        assert received[0].metrics is not None
+        assert received[0].tracer is not None
+    finally:
+        created.engine.dispose()
+
+
+def built_factory(handler: _RecordingScan) -> HandlerFactory:
+    def factory(deps: HandlerDeps) -> _RecordingScan:
+        del deps
+        return handler
+
+    return factory
+
+
+def test_fabrica_que_devolve_none_deixa_o_tipo_sem_handler(
+    home: Path, free_port: int, recording_runner: type[_RecordingRunner]
+) -> None:
+    created = bootstrap(
+        AppSettings(port=free_port, otel_enabled=False),
+        auth=LoginRequiredGateway(),
+        handler_factories=HANDLER_FACTORIES,
+    )
+    try:
+        assert recording_runner.created[0].handlers == {}
+    finally:
+        created.engine.dispose()
+
+
+def test_bootstrap_registra_gauge_da_ultima_varredura(
+    home: Path, free_port: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registered: list[tuple[ObservableName, object]] = []
+
+    class _Registry:
+        def __init__(self, provider: object) -> None:
+            del provider
+
+        def register(self, name: ObservableName, source: object) -> None:
+            registered.append((name, source))
+
+    monkeypatch.setattr(bootstrap_module, "ObservableRegistry", _Registry)
+
+    created = bootstrap(AppSettings(port=free_port, otel_enabled=False))
+    try:
+        assert [name for name, _ in registered] == [ObservableName.SCAN_LAST_SUCCESS]
+        assert isinstance(registered[0][1], ScanLastSuccessSource)
+        assert registered[0][1].collect() == []
+    finally:
+        created.engine.dispose()

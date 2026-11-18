@@ -9,6 +9,8 @@ from odc import cli
 from odc.bootstrap import EXIT_FAILURE, EXIT_PORT_IN_USE, BootstrapError, Runtime
 from odc.config import AppSettings, ConfigError
 from odc.config import load_settings as real_load_settings
+from odc.jobs.factories import HANDLER_FACTORIES
+from odc.jobs.types import JobType
 
 # `bootstrap` e `run` são substituídos nos testes: o Runtime nunca é usado de fato.
 RUNTIME_STUB = cast("Runtime", object())
@@ -30,7 +32,10 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         recorded["overrides"] = dict(overrides or {})
         return real_load_settings(overrides)
 
-    def fake_bootstrap(settings: AppSettings, hooks: object = ()) -> Runtime:
+    def fake_bootstrap(
+        settings: AppSettings, hooks: object = (), *, handler_factories: object = None
+    ) -> Runtime:
+        recorded["handler_factories"] = handler_factories
         return RUNTIME_STUB
 
     def fake_run(runtime: Runtime, *, open_browser: bool) -> int:
@@ -57,6 +62,13 @@ def test_sem_flags_nao_envia_overrides_e_usa_configuracao(calls: dict[str, objec
     assert result == 0
     assert calls["overrides"] == {}
     assert calls["open_browser"] is True
+
+
+def test_registra_a_fabrica_do_handler_de_varredura(calls: dict[str, object]) -> None:
+    cli.main([])
+
+    assert calls["handler_factories"] is HANDLER_FACTORIES
+    assert JobType.SCAN in HANDLER_FACTORIES
 
 
 def test_port_e_no_browser_viram_overrides(calls: dict[str, object]) -> None:
@@ -92,7 +104,7 @@ def test_porta_ocupada_no_bootstrap_retorna_exit_3_com_mensagem(
 ) -> None:
     monkeypatch.setattr(cli, "load_settings", lambda overrides=None: AppSettings())
 
-    def busy(settings: AppSettings, hooks: object = ()) -> Runtime:
+    def busy(settings: AppSettings, hooks: object = (), **_: object) -> Runtime:
         raise BootstrapError(EXIT_PORT_IN_USE, "porta 8765 já está em uso")
 
     monkeypatch.setattr(cli, "bootstrap", busy)
@@ -103,7 +115,7 @@ def test_porta_ocupada_no_bootstrap_retorna_exit_3_com_mensagem(
 
 def test_falha_de_run_retorna_exit_code_do_erro(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "load_settings", lambda overrides=None: AppSettings())
-    monkeypatch.setattr(cli, "bootstrap", lambda settings, hooks=(): RUNTIME_STUB)
+    monkeypatch.setattr(cli, "bootstrap", lambda settings, hooks=(), **_: RUNTIME_STUB)
 
     def unhealthy(runtime: Runtime, *, open_browser: bool) -> int:
         raise BootstrapError(EXIT_FAILURE, "servidor não respondeu em /healthz.")

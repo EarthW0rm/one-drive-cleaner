@@ -327,3 +327,22 @@ def test_release_devolve_running_sem_contar_tentativa(session: Session) -> None:
     assert row is not None
     assert (row.status, row.attempts, row.heartbeat_at) == ("queued", 0, None)
     assert jobs.release(session, created.id) is False  # já não está running
+
+
+def test_list_active_payloads_traz_so_ativos_do_tipo_em_ordem(session: Session) -> None:
+    first = jobs.enqueue(session, job_type="extract", payload={"item_ids": [1]}, now=T1)
+    finished = jobs.enqueue(session, job_type="extract", payload={"item_ids": [2]}, now=T1)
+    paused = jobs.enqueue(session, job_type="extract", payload={"item_ids": [3]}, now=T2)
+    jobs.enqueue(session, job_type="scan", payload={"mode": "auto"}, now=T1)
+    jobs.set_status(session, finished.id, "done", now=T2)
+    jobs.set_status(session, paused.id, "paused", now=T2, pause_reason="network")
+
+    payloads = jobs.list_active_payloads(session, "extract")
+
+    assert [json.loads(p) for p in payloads] == [{"item_ids": [1]}, {"item_ids": [3]}]
+    assert first.id < paused.id
+
+
+def test_list_active_payloads_rejeita_tipo_invalido(session: Session) -> None:
+    with pytest.raises(StorageValidationError):
+        jobs.list_active_payloads(session, "nope")

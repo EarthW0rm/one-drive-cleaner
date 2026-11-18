@@ -185,7 +185,10 @@ class ScanRootService:
                     session, drive_item_id=folder_id, display_path=paths[folder_id]
                 )
                 if not row.enabled:
+                    # Reabilitada: enquanto esteve fora, seus itens podem ter sido adotados por
+                    # outra raiz ou marcados fora do escopo; o delta antigo não os devolveria.
                     scan_roots.set_enabled(session, row.id, enabled=True)
+                    scan_roots.clear_links(session, row.id)
                 if row.display_path != paths[folder_id]:
                     scan_roots.set_display_path(session, row.id, paths[folder_id])
             return scan_roots.list_roots(session, enabled_only=True)

@@ -11,7 +11,7 @@ vencido): quem executava perdeu a posse e não deve gravar resultado.
 import json
 import logging
 import re
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -19,7 +19,14 @@ from typing import Protocol
 from sqlalchemy import Engine
 
 from odc.jobs.errors import ERROR_CODE_PATTERN, INVALID_PAYLOAD
-from odc.jobs.payloads import PAYLOAD_MODELS, Payload, PayloadError, parse_payload
+from odc.jobs.payloads import (
+    MAX_EXTRACT_BATCH,
+    PAYLOAD_MODELS,
+    ExtractPayload,
+    Payload,
+    PayloadError,
+    parse_payload,
+)
 from odc.jobs.types import DEFAULT_PRIORITY, JobType, PauseReason
 from odc.storage.dto import JobRow
 from odc.storage.errors import StorageValidationError
@@ -197,6 +204,38 @@ class JobQueue:
         data = None if payload is None else self._prepare(job_type, payload, None, None)[0]
         with UnitOfWork(self._database.engine, write=False) as session:
             return jobs.has_active(session, job_type.value, payload=data)
+
+    def active_payloads(self, job_type: JobType) -> list[Payload]:
+        """Payloads dos jobs `queued`/`running`/`paused` do tipo; inválidos são ignorados."""
+        with UnitOfWork(self._database.engine, write=False) as session:
+            raw = jobs.list_active_payloads(session, job_type.value)
+        found: list[Payload] = []
+        for entry in raw:
+            try:
+                found.append(parse_payload(job_type, entry))
+            except PayloadError:
+                continue
+        return found
+
+    def pending_extract_item_ids(self) -> frozenset[int]:
+        """Itens já cobertos por algum job `extract` ativo (evita enfileirar em dobro)."""
+        return frozenset(
+            item_id
+            for payload in self.active_payloads(JobType.EXTRACT)
+            if isinstance(payload, ExtractPayload)
+            for item_id in payload.item_ids
+        )
+
+    def enqueue_extract(self, item_ids: Sequence[int]) -> list[int]:
+        """Enfileira `extract` em lotes de até `MAX_EXTRACT_BATCH` itens; devolve os ids."""
+        unique = list(dict.fromkeys(item_ids))
+        return [
+            self.enqueue(
+                JobType.EXTRACT,
+                ExtractPayload(item_ids=unique[start : start + MAX_EXTRACT_BATCH]),
+            )
+            for start in range(0, len(unique), MAX_EXTRACT_BATCH)
+        ]
 
     def get(self, job_id: int) -> JobRow | None:
         with UnitOfWork(self._database.engine, write=False) as session:

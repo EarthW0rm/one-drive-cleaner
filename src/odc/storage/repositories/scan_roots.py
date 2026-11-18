@@ -67,12 +67,18 @@ def save_delta_link(session: Session, root_id: int, delta_link: str, *, now: str
     _update(session, root_id, delta_link=delta_link, next_link=None, last_delta_at=now)
 
 
+def clear_links(session: Session, root_id: int) -> None:
+    """Descarta `next_link` e `delta_link`: a próxima varredura da pasta será completa."""
+    _update(session, root_id, next_link=None, delta_link=None)
+
+
 def mark_full_scan(session: Session, root_id: int, *, now: str) -> None:
     _update(session, root_id, last_full_scan_at=now)
 
 
 __all__ = [
     "add",
+    "clear_links",
     "get",
     "list_roots",
     "mark_full_scan",

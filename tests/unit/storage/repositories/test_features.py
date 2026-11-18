@@ -180,3 +180,19 @@ def test_load_matrix_50_mil_vetores_em_menos_de_2s(session: Session, model_id: i
 
     assert matrix.embeddings.shape == (total, dim)
     assert elapsed < 2.0
+
+
+def test_delete_for_items_remove_somente_os_itens_pedidos(
+    session: Session, make_item: ItemFactory, model_id: int
+) -> None:
+    ids = [make_item("ANALISADO").id for _ in range(3)]
+    features.save_batch(session, [_input(i, model_id, 0.5) for i in ids], now=NOW)
+
+    removed = features.delete_for_items(session, [ids[0], ids[2], 9999])
+
+    assert removed == 2
+    assert [features.get(session, i) is None for i in ids] == [True, False, True]
+
+
+def test_delete_for_items_sem_ids_nao_remove_nada(session: Session) -> None:
+    assert features.delete_for_items(session, []) == 0

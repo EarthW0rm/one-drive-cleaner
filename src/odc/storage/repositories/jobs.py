@@ -137,6 +137,14 @@ def has_active(
     return bool(session.execute(stmt).scalar_one())
 
 
+def list_active_payloads(session: Session, job_type: str) -> Sequence[str]:
+    """Payloads (JSON) dos jobs ativos (`queued`/`running`/`paused`) do tipo, em ordem de id."""
+    if job_type not in JOB_TYPES:
+        raise StorageValidationError("tipo de job inválido")
+    stmt = select(job.c.payload).where(_active_filter(job_type, None)).order_by(job.c.id)
+    return list(session.execute(stmt).scalars())
+
+
 def enqueue_unique(
     session: Session,
     *,
