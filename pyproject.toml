@@ -12,6 +12,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20.1",
+    "numpy>=2.5.5",
     "platformdirs>=4.14.7",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
@@ -62,6 +63,8 @@ max-complexity = 10
 "tests/**" = ["S101", "PLR2004"]
 # Migrações listam CHECKs inline; linhas longas fazem parte do DDL versionado.
 "src/odc/storage/migrations/versions/*" = ["E501"]
+# Repositórios recebem campos de linha como argumentos nomeados (keyword-only).
+"src/odc/storage/repositories/*" = ["PLR0913"]
 
 [tool.mypy]
 strict = true
@@ -158,7 +161,7 @@ paths = ["src", "scripts"]
 min_confidence = 80
 # Parâmetros exigidos pelas assinaturas de BaseSettings.settings_customise_sources e
 # PydanticBaseSettingsSource.get_field_value: o pydantic-settings os passa por nome.
-ignore_names = ["cls", "dotenv_settings", "file_secret_settings", "field"]
+ignore_names = ["cls", "dotenv_settings", "file_secret_settings", "field", "traceback"]
 
 [tool.odc.test-pairs]
 # Módulos de produção isentos de teste unitário pareado (plan 10.1).
