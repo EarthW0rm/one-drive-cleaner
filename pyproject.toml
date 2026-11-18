@@ -47,6 +47,7 @@ dev = [
     "deptry",
     "import-linter",
     "mypy",
+    "pillow>=13.0.0",
     "pip-audit",
     "pre-commit>=4.7.0",
     "pytest",
@@ -96,7 +97,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-pythonpath = ["scripts"]
+pythonpath = [".", "scripts"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 addopts = [
@@ -104,6 +105,7 @@ addopts = [
     "--strict-markers",
     "--cov=odc",
     "--cov=scripts",
+    "--cov=tests/fakes",
     "--cov-branch",
     "--cov-fail-under=90",
 ]
