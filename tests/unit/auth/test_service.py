@@ -420,6 +420,15 @@ def test_token_do_cache_nao_conta_refresh(h: Harness) -> None:
     assert h.script.silent_calls == 1
 
 
+def test_force_refresh_e_repassado_ao_msal(h: Harness) -> None:
+    h.login()
+
+    h.service.get_access_token()
+    h.service.get_access_token(force_refresh=True)
+
+    assert h.script.silent_force_refresh == [False, True]
+
+
 def test_token_renovado_no_provedor_conta_refresh_ok(h: Harness) -> None:
     h.login()
     h.script.silent_result = {"access_token": "FAKE-novo", "token_source": "identity_provider"}

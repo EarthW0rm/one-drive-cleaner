@@ -25,7 +25,7 @@ class MsalClient(Protocol):
     def get_accounts(self) -> list[AccountInfo]: ...
 
     def acquire_token_silent_with_error(
-        self, scopes: list[str], account: AccountInfo
+        self, scopes: list[str], account: AccountInfo, *, force_refresh: bool = False
     ) -> TokenResult | None: ...
 
 

@@ -207,16 +207,20 @@ class AuthService:
 
     # --- Tokens ---
 
-    def get_access_token(self) -> str:
+    def get_access_token(self, *, force_refresh: bool = False) -> str:
         """Token de acesso silencioso. Levanta `LoginRequired` quando exige interação.
 
-        `TokenRefreshError` indica falha transitória (rede/serviço): não exige novo login.
+        `force_refresh` ignora o access token em cache e renova no provedor (usado pelo cliente
+        da Graph após um 401). `TokenRefreshError` indica falha transitória (rede/serviço): não
+        exige novo login.
         """
         record, app = self._active_session()
         account = self._find_account(app, record)
         with self._refresh_lock:
             try:
-                result = app.acquire_token_silent_with_error(list(SCOPES), account)
+                result = app.acquire_token_silent_with_error(
+                    list(SCOPES), account, force_refresh=force_refresh
+                )
             except OSError as error:
                 self._record_refresh(RefreshResult.FAILED)
                 message = "falha de rede ao renovar o token"

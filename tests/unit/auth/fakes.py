@@ -110,9 +110,10 @@ class FakeMsalApp:
         return list(self._script.accounts)
 
     def acquire_token_silent_with_error(
-        self, scopes: list[str], account: AccountInfo
+        self, scopes: list[str], account: AccountInfo, *, force_refresh: bool = False
     ) -> TokenResult | None:
         self._script.silent_calls += 1
+        self._script.silent_force_refresh.append(force_refresh)
         if self._script.silent_error is not None:
             raise self._script.silent_error
         return self._script.silent_result
@@ -138,6 +139,7 @@ class MsalScript:
         }
         self.silent_error: Exception | None = None
         self.silent_calls = 0
+        self.silent_force_refresh: list[bool] = []
         self.created: list[tuple[str, str]] = []
         self.apps: list[FakeMsalApp] = []
 
