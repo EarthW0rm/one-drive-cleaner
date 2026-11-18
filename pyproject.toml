@@ -11,9 +11,11 @@ license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.20.1",
     "platformdirs>=4.14.7",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
+    "sqlalchemy>=2",
 ]
 
 [project.scripts]
@@ -58,6 +60,8 @@ max-complexity = 10
 [tool.ruff.lint.per-file-ignores]
 # Asserts e valores literais são idiomáticos em testes; as demais regras seguem ativas.
 "tests/**" = ["S101", "PLR2004"]
+# Migrações listam CHECKs inline; linhas longas fazem parte do DDL versionado.
+"src/odc/storage/migrations/versions/*" = ["E501"]
 
 [tool.mypy]
 strict = true
@@ -92,6 +96,7 @@ markers = [
 branch = true
 omit = [
     "src/odc/cli.py",
+    "src/odc/storage/migrations/env.py",
     "src/odc/storage/migrations/versions/*",
 ]
 disable_warnings = ["module-not-imported"]
@@ -159,6 +164,7 @@ ignore_names = ["cls", "dotenv_settings", "file_secret_settings", "field"]
 # Módulos de produção isentos de teste unitário pareado (plan 10.1).
 exclude = [
     "src/odc/cli.py",
+    "src/odc/storage/migrations/env.py",
     "src/odc/storage/migrations/versions/*",
 ]
 
