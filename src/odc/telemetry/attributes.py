@@ -47,6 +47,11 @@ LOG_KEYS = frozenset(
         "instrumentation",
         "hook",
         "setting_key",
+        # Ciclo de vida de jobs (plan 5.3.4): IDs internos inteiros, tipo e motivo de pausa.
+        "job_id",
+        "job_type",
+        "pause_reason",
+        "count",
     }
 )
 

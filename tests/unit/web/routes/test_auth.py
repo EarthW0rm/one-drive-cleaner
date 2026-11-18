@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
+from typing import cast
+
 from fastapi.testclient import TestClient
 
 from odc.auth.errors import (
@@ -10,11 +12,12 @@ from odc.auth.errors import (
     UnsupportedAccount,
 )
 from odc.config import AppSettings
+from odc.jobs.supervisor import JobSupervisor
 from odc.storage.migrate import MigrationError
 from odc.web.app import create_app
 from odc.web.services import AppServices, LoginRequiredGateway
 
-from ..conftest import ACCOUNT, AUTH_URI, StubAuth
+from ..conftest import ACCOUNT, AUTH_URI, BASE_URL, StubAuth
 
 
 def _key(services: AppServices) -> str | None:
@@ -221,3 +224,66 @@ def test_logout_com_keychain_indisponivel_retorna_500_padrao(
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "INTERNAL"
     assert "detalhe" not in response.text
+
+
+class FakeJobs:
+    """Supervisor fake: delega a troca de banco e registra as chamadas."""
+
+    def __init__(self, services: AppServices, error: Exception | None = None) -> None:
+        self.services = services
+        self.calls: list[tuple[str, str | None]] = []
+        self.error = error
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
+
+    async def activate_account(self, account_key: str, drive_id: str) -> None:
+        self.calls.append(("activate", account_key))
+        if self.error is not None:
+            raise self.error
+        self.services.database.activate(account_key, drive_id)
+
+    async def deactivate_account(self) -> None:
+        self.calls.append(("deactivate", None))
+        self.services.database.deactivate()
+
+
+def _client_with_jobs(services: AppServices, jobs: FakeJobs) -> TestClient:
+    with_jobs = AppServices(
+        database=services.database,
+        auth=services.auth,
+        static_dir=services.static_dir,
+        jobs=cast("JobSupervisor", jobs),
+    )
+    return TestClient(create_app(AppSettings.model_construct(), with_jobs), base_url=BASE_URL)
+
+
+def test_callback_e_logout_com_runner_trocam_conta_pelo_supervisor(
+    services: AppServices, auth: StubAuth
+) -> None:
+    jobs = FakeJobs(services)
+
+    with _client_with_jobs(services, jobs) as client:
+        login = client.get("/auth/callback?code=a&state=s", follow_redirects=False)
+        logout = client.post("/auth/logout", headers=_csrf(client))
+
+    assert login.headers["location"] == "/revisao"
+    assert logout.status_code == 204
+    assert jobs.calls == [("activate", ACCOUNT.account_key), ("deactivate", None)]
+    assert _key(services) is None
+
+
+def test_callback_com_runner_e_falha_na_troca_desfaz_o_login(
+    services: AppServices, auth: StubAuth
+) -> None:
+    jobs = FakeJobs(services, error=MigrationError("MIGRATION_FAILED", "falha"))
+
+    with _client_with_jobs(services, jobs) as client:
+        response = client.get("/auth/callback?code=a&state=s", follow_redirects=False)
+
+    assert response.headers["location"] == "/login?error=auth_failed"
+    assert auth.logouts == 1
+    assert _key(services) is None

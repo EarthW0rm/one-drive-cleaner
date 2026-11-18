@@ -10,6 +10,7 @@ from sqlalchemy import Engine
 from odc.jobs.queue import JobQueue
 from odc.storage.engine import create_engine_for
 from odc.storage.migrate import upgrade
+from tests.unit.jobs.support import Telemetry
 
 START = datetime(2026, 11, 17, 10, 0, 0, tzinfo=UTC)
 
@@ -61,3 +62,10 @@ def holder(engine: Engine) -> EngineHolder:
 @pytest.fixture
 def queue(holder: EngineHolder, clock: FakeClock) -> JobQueue:
     return JobQueue(holder, clock=clock)
+
+
+@pytest.fixture
+def telemetry() -> Iterator[Telemetry]:
+    created = Telemetry()
+    yield created
+    created.shutdown()

@@ -4,6 +4,7 @@ import os
 import socket
 import stat
 import threading
+import time
 import urllib.error
 import urllib.request
 import webbrowser
@@ -32,6 +33,10 @@ from odc.bootstrap import (
     run,
 )
 from odc.config import AppSettings
+from odc.jobs.handler import JobContext
+from odc.jobs.payloads import ScanPayload
+from odc.jobs.queue import JobQueue
+from odc.jobs.types import JobType
 from odc.storage import account_db as account_db_module
 from odc.storage.migrate import MigrationError
 from odc.telemetry.setup import Exporters, TelemetryHandle, init_telemetry
@@ -457,3 +462,43 @@ def test_falha_de_migracao_encerra_a_telemetria(
         bootstrap(AppSettings(port=free_port))
 
     assert memory_exporters.handles[0].closed is True
+
+
+class _RecordingScan:
+    def __init__(self) -> None:
+        self.jobs: list[int] = []
+
+    async def run(self, ctx: JobContext) -> None:
+        self.jobs.append(ctx.job_id)
+
+
+def test_run_com_conta_ativa_executa_jobs_pelo_runner_do_lifespan(
+    home: Path, free_port: int, fake_auth: type[FakeAuthService]
+) -> None:
+    fake_auth.account = Account(account_key("uid.utid"), "Maria", "drive-1")
+    scan = _RecordingScan()
+    created = bootstrap(
+        AppSettings(port=free_port, otel_enabled=False), handlers={JobType.SCAN: scan}
+    )
+    queue = JobQueue(created.database)
+    statuses: list[str] = []
+
+    def enqueue_and_wait(_thread: threading.Thread) -> None:
+        job_id = queue.enqueue(JobType.SCAN, ScanPayload(mode="auto"))
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            row = queue.get(job_id)
+            if row is not None and row.status == "done":
+                break
+            time.sleep(0.02)
+        row = queue.get(job_id)
+        statuses.append(row.status if row is not None else "missing")
+
+    try:
+        result = run(created, open_browser=False, wait_for_exit=enqueue_and_wait)
+    finally:
+        created.engine.dispose()
+
+    assert result == EXIT_OK
+    assert statuses == ["done"]
+    assert len(scan.jobs) == 1

@@ -186,19 +186,29 @@ def enqueue_unique(
     return found, created
 
 
-def claim_next(session: Session, *, now: str) -> JobRow | None:
+def claim_next(session: Session, *, now: str, types: Sequence[str] | None = None) -> JobRow | None:
     """Reivindica o próximo job `queued` de forma atômica (um UPDATE, sem SELECT prévio).
 
     Ordem: prioridade desc, criação asc, id. Jobs com backoff pendente (`heartbeat_at` > now) são
     ignorados. A cláusula externa `status = 'queued'` reconfere o estado no momento da escrita:
     dois claims simultâneos nunca recebem o mesmo job. Marca `running`, `started_at` e heartbeat.
+    `types` restringe o claim a esses tipos (worker dedicado); sequência vazia não reivindica nada.
     """
+    if types is not None:
+        if not types:
+            return None
+        if not set(types) <= set(JOB_TYPES):
+            raise StorageValidationError("tipo de job inválido")
     ranked = job.alias("candidate")
-    next_id = (
+    candidates = (
         select(ranked.c.id)
         .where(ranked.c.status == "queued")
         .where(or_(ranked.c.heartbeat_at.is_(None), ranked.c.heartbeat_at <= now))
-        .order_by(ranked.c.priority.desc(), ranked.c.created_at, ranked.c.id)
+    )
+    if types is not None:
+        candidates = candidates.where(ranked.c.type.in_(tuple(types)))
+    next_id = (
+        candidates.order_by(ranked.c.priority.desc(), ranked.c.created_at, ranked.c.id)
         .limit(1)
         .scalar_subquery()
     )
@@ -254,6 +264,12 @@ def requeue_for_retry(session: Session, job_id: int, *, available_at: str) -> bo
         .values(status="queued", attempts=job.c.attempts + 1, heartbeat_at=available_at)
     )
     return execute_dml(session, stmt).rowcount > 0
+
+
+def release(session: Session, job_id: int) -> bool:
+    """`running` -> `queued` sem contar tentativa (interrupção pelo encerramento, não falha)."""
+    values = {"status": "queued", "heartbeat_at": None}
+    return _transition(session, job_id, ("running",), values)
 
 
 def pause(session: Session, job_id: int, *, reason: str) -> bool:

@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
@@ -27,11 +27,18 @@ from odc.auth.errors import AuthError
 from odc.auth.models import Account
 from odc.auth.service import AuthService
 from odc.config import AppSettings
+from odc.jobs.handler import Handler
+from odc.jobs.queue import JobQueue
+from odc.jobs.resumer import JobResumer
+from odc.jobs.runner import JobRunner
+from odc.jobs.supervisor import JobSupervisor
+from odc.jobs.types import JobType
 from odc.storage.account_db import AccountDatabase
 from odc.storage.migrate import MigrationError
 from odc.telemetry.instrument import HttpxHooks, instrument_all
 from odc.telemetry.metrics import Metrics
 from odc.telemetry.setup import TelemetryHandle, init_telemetry
+from odc.telemetry.tracing import TRACER_NAME
 from odc.web.app import create_app
 from odc.web.services import AppServices, AuthGateway
 
@@ -44,7 +51,8 @@ EXIT_PORT_IN_USE = 3
 HEALTH_TIMEOUT_S = 15.0
 HEALTH_POLL_INTERVAL_S = 0.1
 HEALTH_REQUEST_TIMEOUT_S = 1.0
-SHUTDOWN_TIMEOUT_S = 5.0
+# Cobre o encerramento gracioso do runner (10 s) mais o cancelamento forçado dos jobs.
+SHUTDOWN_TIMEOUT_S = 15.0
 
 
 class BootstrapError(Exception):
@@ -126,16 +134,18 @@ def bootstrap(
     hooks: Sequence[StartupHook] = (),
     httpx_hooks: HttpxHooks | None = None,
     auth: AuthGateway | None = None,
+    handlers: Mapping[JobType, Handler] | None = None,
 ) -> Runtime:
     """Inicializa a telemetria, abre o banco, executa os hooks e monta a aplicação FastAPI.
 
     O banco é o da conta ativa (se houver) ou o local anterior ao login. A telemetria nunca
     impede a inicialização (RN-25); sem `client_id` o app sobe e o login responde
-    `not_configured`.
+    `not_configured`. O runner de jobs (`handlers` por tipo) sobe com o servidor (lifespan).
     """
     telemetry = init_telemetry(settings, _package_version())
+    metrics = Metrics.create(telemetry.meter_provider)
     if auth is None:
-        auth = AuthService(settings.client_id, metrics=Metrics.create(telemetry.meter_provider))
+        auth = AuthService(settings.client_id, metrics=metrics)
     account = _startup_account(auth)
     try:
         database = AccountDatabase.open(
@@ -145,7 +155,8 @@ def bootstrap(
         telemetry.shutdown()
         message = f"falha na migração do banco ({error.code})."
         raise BootstrapError(EXIT_FAILURE, message) from error
-    app = create_app(settings, AppServices(database=database, auth=auth))
+    jobs = _job_supervisor(database, telemetry, metrics, handlers or {})
+    app = create_app(settings, AppServices(database=database, auth=auth, jobs=jobs))
     instrument_all(app, telemetry, httpx_hooks)
     runtime = Runtime(settings=settings, database=database, app=app, telemetry=telemetry)
     try:
@@ -155,6 +166,23 @@ def bootstrap(
         telemetry.shutdown()
         raise
     return runtime
+
+
+def _job_supervisor(
+    database: AccountDatabase,
+    telemetry: TelemetryHandle,
+    metrics: Metrics,
+    handlers: Mapping[JobType, Handler],
+) -> JobSupervisor:
+    queue = JobQueue(database, metrics=metrics)
+    runner = JobRunner(
+        queue,
+        handlers,
+        metrics=metrics,
+        tracer=telemetry.tracer_provider.get_tracer(TRACER_NAME),
+    )
+    resumer = JobResumer(queue, runner.notify, metrics=metrics)
+    return JobSupervisor(database, queue, runner, resumer, metrics=metrics)
 
 
 def _port_available(host: str, port: int) -> bool:

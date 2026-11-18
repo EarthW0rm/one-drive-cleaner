@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 
 from odc.auth.errors import (
     AuthError,
@@ -84,35 +85,51 @@ def create_auth_router(services: AppServices, port: int) -> APIRouter:
         status_code=HTTP_FOUND,
         response_class=RedirectResponse,
     )
-    def callback(request: Request) -> RedirectResponse:
+    async def callback(request: Request) -> RedirectResponse:
         params = {k: v for k in CALLBACK_KEYS if (v := request.query_params.get(k)) is not None}
         state = params.get("state")
         if not state:
             return _login_error(LoginError.AUTH_FAILED)
         try:
-            account = services.auth.complete_login(state, params)
+            # Troca de código por token (rede + Keychain): fora do event loop.
+            account = await run_in_threadpool(services.auth.complete_login, state, params)
         except AuthError as error:
             logger.warning("login recusado", extra={"error_type": type(error).__name__})
             return _login_error(_error_for(error))
         try:
-            services.database.activate(account.account_key, account.drive_id)
+            await _activate(services, account.account_key, account.drive_id)
         except (MigrationError, SQLAlchemyError, OSError, ValueError) as error:
             logger.error("troca de banco falhou", extra={"error_type": type(error).__name__})
-            _logout_best_effort(services)
+            await run_in_threadpool(_logout_best_effort, services)
             return _login_error(LoginError.AUTH_FAILED)
         return RedirectResponse(HOME_PATH, status_code=HTTP_FOUND)
 
     @router.post("/auth/logout", operation_id="auth_logout", status_code=HTTP_NO_CONTENT)
-    def logout() -> Response:
+    async def logout() -> Response:
         try:
-            services.auth.logout()
+            await run_in_threadpool(services.auth.logout)
         except KeychainUnavailableError as error:
             message = "Não foi possível remover a sessão do Keychain."
             raise AppError(ErrorCode.INTERNAL, message, 500) from error
-        services.database.deactivate()
+        await _deactivate(services)
         return Response(status_code=HTTP_NO_CONTENT)
 
     return router
+
+
+async def _activate(services: AppServices, account_key: str, drive_id: str) -> None:
+    """Troca para o banco da conta; com runner, para/retoma os jobs em volta da troca."""
+    if services.jobs is None:
+        await run_in_threadpool(services.database.activate, account_key, drive_id)
+    else:
+        await services.jobs.activate_account(account_key, drive_id)
+
+
+async def _deactivate(services: AppServices) -> None:
+    if services.jobs is None:
+        await run_in_threadpool(services.database.deactivate)
+    else:
+        await services.jobs.deactivate_account()
 
 
 def _logout_best_effort(services: AppServices) -> None:

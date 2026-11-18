@@ -670,3 +670,29 @@ def test_relogio_sem_fuso_e_rejeitado(holder: EngineHolder) -> None:
 
     with pytest.raises(ValueError, match="fuso"):
         queue.enqueue(JobType.SCAN, SCAN)
+
+
+def test_claim_por_tipos_entrega_so_os_do_worker(queue: JobQueue) -> None:
+    move = queue.enqueue(JobType.MOVE, MovePayload(item_ids=[1], mode="manual"))
+    scan = queue.enqueue(JobType.SCAN, SCAN)
+
+    background = queue.claim_next({JobType.SCAN, JobType.EXTRACT})
+    actions = queue.claim_next([JobType.MOVE])
+
+    assert background is not None
+    assert actions is not None
+    assert (background.id, actions.id) == (scan, move)
+    assert queue.claim_next([JobType.DELETE]) is None
+
+
+def test_release_devolve_job_a_fila_sem_tentativa_e_perde_posse(queue: JobQueue) -> None:
+    job_id = queue.enqueue(JobType.SCAN, SCAN)
+    assert queue.claim_next() is not None
+
+    assert queue.release(job_id) is True
+
+    row = queue.get(job_id)
+    assert row is not None
+    assert (row.status, row.attempts) == ("queued", 0)
+    assert queue.release(job_id) is False
+    assert queue.heartbeat(job_id) is False

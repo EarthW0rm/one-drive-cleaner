@@ -11,13 +11,14 @@ vencido): quem executava perdeu a posse e não deve gravar resultado.
 import json
 import logging
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from sqlalchemy import Engine
 
+from odc.jobs.errors import ERROR_CODE_PATTERN, INVALID_PAYLOAD
 from odc.jobs.payloads import PAYLOAD_MODELS, Payload, PayloadError, parse_payload
 from odc.jobs.types import DEFAULT_PRIORITY, JobType, PauseReason
 from odc.storage.dto import JobRow
@@ -31,8 +32,6 @@ from odc.telemetry.tracing import current_traceparent
 logger = logging.getLogger(__name__)
 
 STALE_AFTER_S = 120.0
-INVALID_PAYLOAD = "INVALID_PAYLOAD"
-_ERROR_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _TRACEPARENT = re.compile(r"^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
 
 
@@ -80,7 +79,7 @@ def _valid_traceparent(value: str | None) -> str | None:
 
 
 def _error_code(value: str) -> str:
-    if not _ERROR_CODE.fullmatch(value):
+    if not ERROR_CODE_PATTERN.fullmatch(value):
         raise StorageValidationError("error_code inválido (esperado MAIUSCULAS_COM_UNDERSCORE)")
     return value
 
@@ -203,16 +202,18 @@ class JobQueue:
         with UnitOfWork(self._database.engine, write=False) as session:
             return jobs.get(session, job_id)
 
-    def claim_next(self) -> ClaimedJob | None:
+    def claim_next(self, types: Collection[JobType] | None = None) -> ClaimedJob | None:
         """Reivindica o próximo job pronto (prioridade desc, criação asc) ou None.
 
-        Job cujo payload não passa na validação vira `failed(INVALID_PAYLOAD)` sem ser entregue,
-        e a busca segue para o próximo.
+        `types` restringe a busca a esses tipos (cada worker do runner tem os seus). Job cujo
+        payload não passa na validação vira `failed(INVALID_PAYLOAD)` sem ser entregue, e a busca
+        segue para o próximo.
         """
+        allowed = None if types is None else sorted(t.value for t in types)
         while True:
             invalid: JobRow | None = None
             with self._write() as session:
-                row = jobs.claim_next(session, now=self._now())
+                row = jobs.claim_next(session, now=self._now(), types=allowed)
                 if row is None:
                     return None
                 try:
@@ -263,6 +264,11 @@ class JobQueue:
         available_at = _stamp(self._clock() + timedelta(seconds=delay_s))
         with self._write() as session:
             return jobs.requeue_for_retry(session, job_id, available_at=available_at)
+
+    def release(self, job_id: int) -> bool:
+        """`running` -> `queued` sem contar tentativa (encerramento do runner); False sem posse."""
+        with self._write() as session:
+            return jobs.release(session, job_id)
 
     def pause(self, job_id: int, reason: PauseReason) -> bool:
         """`queued`/`running` -> `paused(reason)`."""

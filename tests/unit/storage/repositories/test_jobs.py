@@ -292,3 +292,38 @@ def test_enqueue_unique_e_has_active_validam_tipo(session: Session) -> None:
         jobs.enqueue_unique(session, job_type="x", payload={}, now=T1)
     with pytest.raises(StorageValidationError):
         jobs.has_active(session, "x")
+
+
+def test_claim_next_por_tipos_ignora_os_demais(session: Session) -> None:
+    jobs.enqueue(session, job_type="move", payload={}, now=T1, priority=100)
+    scan = jobs.enqueue(session, job_type="scan", payload={}, now=T2)
+
+    claimed = jobs.claim_next(session, now=T3, types=["scan", "extract"])
+
+    assert claimed is not None
+    assert claimed.id == scan.id
+    assert jobs.claim_next(session, now=T3, types=["extract"]) is None
+
+
+def test_claim_next_com_tipos_vazio_nao_reivindica(session: Session) -> None:
+    created = jobs.enqueue(session, job_type="scan", payload={}, now=T1)
+
+    assert jobs.claim_next(session, now=T2, types=[]) is None
+    assert jobs.get(session, created.id).status == "queued"  # type: ignore[union-attr]
+
+
+def test_claim_next_valida_tipos(session: Session) -> None:
+    with pytest.raises(StorageValidationError):
+        jobs.claim_next(session, now=T1, types=["inexistente"])
+
+
+def test_release_devolve_running_sem_contar_tentativa(session: Session) -> None:
+    created = jobs.enqueue(session, job_type="scan", payload={}, now=T1)
+    jobs.claim_next(session, now=T2)
+
+    assert jobs.release(session, created.id) is True
+
+    row = jobs.get(session, created.id)
+    assert row is not None
+    assert (row.status, row.attempts, row.heartbeat_at) == ("queued", 0, None)
+    assert jobs.release(session, created.id) is False  # já não está running
