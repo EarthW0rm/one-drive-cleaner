@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Gates de qualidade (plan 10.1 e 10.6). Alvos de front delegam a `pnpm --dir frontend`;
-# enquanto `frontend/` não existe (até a TF-143-03) viram no-op com aviso.
+# `e2e/` ainda não existe (suíte E2E futura), então `test-e2e` é no-op com aviso até lá.
 
 .PHONY: lint lint-python lint-frontend lint-repo test test-python test-frontend \
-	test-integration test-model test-e2e test-all
+	build-frontend test-integration test-model test-e2e test-all
 
 FRONTEND_DIR := frontend
 # pytest sem testes coletados retorna 5; só é tolerado nas suítes vazias marcadas.
@@ -18,8 +18,12 @@ lint-python:
 	uv run vulture
 
 lint-frontend:
-	@if [ -f $(FRONTEND_DIR)/package.json ]; then pnpm --dir $(FRONTEND_DIR) run lint; \
-	else echo "AVISO: frontend/ inexistente; lint-frontend ignorado (TF-143-03)"; fi
+	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
+	pnpm --dir $(FRONTEND_DIR) run lint
+
+build-frontend:
+	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
+	pnpm --dir $(FRONTEND_DIR) run build
 
 lint-repo:
 	uv run python scripts/check_spdx.py
@@ -31,8 +35,8 @@ test-python:
 	uv run pytest tests/unit
 
 test-frontend:
-	@if [ -f $(FRONTEND_DIR)/package.json ]; then pnpm --dir $(FRONTEND_DIR) run test; \
-	else echo "AVISO: frontend/ inexistente; test-frontend ignorado (TF-143-03)"; fi
+	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
+	pnpm --dir $(FRONTEND_DIR) run test
 
 test: test-python test-frontend
 
@@ -43,8 +47,8 @@ test-model:
 	uv run pytest -m "model or perf" --no-cov tests; $(PYTEST_EMPTY_OK)
 
 test-e2e:
-	@if [ -f $(FRONTEND_DIR)/package.json ] && [ -f e2e/playwright.config.ts ]; then \
+	@if [ -f e2e/playwright.config.ts ]; then \
 		pnpm --dir $(FRONTEND_DIR) exec playwright test --config ../e2e/playwright.config.ts; \
-	else echo "AVISO: e2e/ inexistente; test-e2e ignorado (TF-143-03)"; fi
+	else echo "AVISO: e2e/ inexistente; test-e2e ignorado (suíte E2E ainda não criada)"; fi
 
 test-all: lint test test-integration test-model test-e2e
