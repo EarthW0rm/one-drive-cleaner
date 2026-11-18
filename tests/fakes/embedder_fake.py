@@ -3,9 +3,9 @@
 
 Satisfaz o Protocol `Embedder` sem pesos e sem `torch`:
 
-- Imagem com marcador de categoria (bloco 16x16 no canto superior esquerdo, ver
-  `stamp_category`): vetor = centróide da categoria misturado com ruído determinístico (sha256
-  da miniatura 32x32). Imagem sem marcador: só ruído (equivale a categoria desconhecida).
+- Imagem com marcador de categoria (`tests/fakes/category_marker.py`): vetor = centróide da
+  categoria misturado com ruído determinístico (sha256 da miniatura 32x32). Imagem sem marcador:
+  só ruído (equivale a categoria desconhecida).
 - Texto igual a um prompt zero-shot das categorias seed: centróide exato. Demais textos: só ruído.
 - `separation` (0 < s <= 1) é o peso do centróide frente ao ruído; calibra a precisão do fake.
 
@@ -21,34 +21,10 @@ import numpy as np
 import numpy.typing as npt
 from PIL import Image
 
-# Mesma ordem e mesmos prompts em inglês do seed de `0001_initial.py` (categorias iniciais).
-SEED_PROMPTS: Final[dict[str, tuple[str, ...]]] = {
-    "screenshot": (
-        "a screenshot of a phone or computer screen",
-        "a screen capture of an app or website",
-    ),
-    "real_photo": (
-        "a real photograph taken with a camera",
-        "a personal photo of people, places or events",
-    ),
-    "meme_sticker": (
-        "a meme with overlaid text",
-        "a sticker or cartoon image shared in chat apps",
-    ),
-    "document_receipt": (
-        "a photo or scan of a paper document",
-        "a receipt or an invoice",
-    ),
-}
-SEED_CATEGORIES: Final = tuple(SEED_PROMPTS)
+from tests.fakes.category_marker import SEED_CATEGORIES, SEED_PROMPTS, read_category
+
 DEFAULT_DIM: Final = 64
 DEFAULT_SEPARATION: Final = 0.9
-MARKER_SIZE: Final = 16
-_MARKER_G: Final = 0x5A
-_MARKER_B: Final = 0xA5
-_MARKER_TOLERANCE: Final = 24.0
-_LEVEL_BASE: Final = 32
-_LEVEL_STEP: Final = 64
 _HASH_SIDE: Final = 32
 _CENTROID_SEED: Final = 151_003
 _LOGIT_SCALE: Final = 100.0
@@ -58,37 +34,6 @@ _PROMPT_CATEGORY: Final = {
 
 ImageVectors = npt.NDArray[np.float16]
 TextVectors = npt.NDArray[np.float32]
-
-
-def _level(index: int) -> int:
-    return _LEVEL_BASE + _LEVEL_STEP * index
-
-
-def stamp_category(image: Image.Image, category: str) -> Image.Image:
-    """Cópia RGB da imagem com o marcador da categoria seed no canto superior esquerdo."""
-    if category not in SEED_CATEGORIES:
-        message = f"categoria sem marcador: {category}"
-        raise ValueError(message)
-    index = SEED_CATEGORIES.index(category)
-    rgb = image.convert("RGB")
-    side = min(MARKER_SIZE, rgb.width, rgb.height)
-    block = Image.new("RGB", (side, side), (_level(index), _MARKER_G, _MARKER_B))
-    rgb.paste(block, (0, 0))
-    return rgb
-
-
-def read_category(image: Image.Image) -> str | None:
-    """Categoria do marcador no canto superior esquerdo, ou `None` se não houver marcador."""
-    rgb = image.convert("RGB")
-    side = min(MARKER_SIZE, rgb.width, rgb.height)
-    region = np.asarray(rgb.crop((0, 0, side, side)), dtype=np.float32).reshape(-1, 3)
-    red, green, blue = (float(value) for value in region.mean(axis=0))
-    if abs(green - _MARKER_G) > _MARKER_TOLERANCE or abs(blue - _MARKER_B) > _MARKER_TOLERANCE:
-        return None
-    index = round((red - _LEVEL_BASE) / _LEVEL_STEP)
-    if not 0 <= index < len(SEED_CATEGORIES) or abs(red - _level(index)) > _MARKER_TOLERANCE:
-        return None
-    return SEED_CATEGORIES[index]
 
 
 def _unit(vector: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:

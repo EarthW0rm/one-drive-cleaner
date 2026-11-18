@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Imagens sintéticas determinísticas para o OneDrive fake (nenhuma foto real, nada versionado).
 
+Cada imagem traz o marcador da sua categoria seed (ver `category_marker`).
+
 Cada tipo imita a "assinatura visual" do que o classificador precisa distinguir, sem usar
 conteúdo pessoal: `photo` (gradiente com ruído e formas orgânicas), `screenshot` (barras de
 status e bolhas de conversa de cores chapadas), `meme` (bloco de cor com faixas de texto) e
@@ -16,6 +18,8 @@ from typing import Final
 
 from PIL import Image, ImageDraw, ImageFont
 
+from tests.fakes.category_marker import stamp_category
+
 MAX_EDGE: Final = 4096
 DEFAULT_RENDER_EDGE: Final = 256
 JPEG_QUALITY: Final = 85
@@ -27,6 +31,15 @@ class ImageKind(StrEnum):
     SCREENSHOT = "screenshot"
     MEME = "meme"
     DOCUMENT = "document"
+
+
+# Categoria seed (`0001_initial.py`) que cada tipo sintético representa; gravada como marcador.
+KIND_CATEGORY: Final = {
+    ImageKind.PHOTO: "real_photo",
+    ImageKind.SCREENSHOT: "screenshot",
+    ImageKind.MEME: "meme_sticker",
+    ImageKind.DOCUMENT: "document_receipt",
+}
 
 
 class ImageFormat(StrEnum):
@@ -112,7 +125,8 @@ def render(spec: ImageSpec) -> bytes:
         ImageKind.DOCUMENT: _paint_document,
     }
     image = painters[spec.kind](spec.width, spec.height, rng)
-    return encode(image, spec.format)
+    marked = stamp_category(image, KIND_CATEGORY[spec.kind])
+    return encode(marked, spec.format)
 
 
 def encode(image: Image.Image, image_format: ImageFormat) -> bytes:

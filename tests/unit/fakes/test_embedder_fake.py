@@ -9,14 +9,13 @@ from PIL import Image
 from sklearn.linear_model import LogisticRegression
 
 from odc.features.embedder import Embedder
-from tests.fakes.embedder_fake import (
-    DEFAULT_DIM,
+from tests.fakes.category_marker import (
     SEED_CATEGORIES,
     SEED_PROMPTS,
-    FakeEmbedder,
     read_category,
     stamp_category,
 )
+from tests.fakes.embedder_fake import DEFAULT_DIM, FakeEmbedder
 from tests.fakes.synthetic_images import ImageKind, make_spec, render
 from tests.unit.features.embedder_contract import (
     assert_batch_equals_single,
