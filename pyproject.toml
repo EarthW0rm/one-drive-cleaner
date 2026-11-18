@@ -103,7 +103,6 @@ markers = [
 [tool.coverage.run]
 branch = true
 omit = [
-    "src/odc/cli.py",
     "src/odc/storage/migrations/env.py",
     "src/odc/storage/migrations/versions/*",
 ]
@@ -163,8 +162,7 @@ extend_exclude = ["scripts", "tests"]
 
 [tool.deptry.per_rule_ignores]
 # itsdangerous: exigido em runtime pelo SessionMiddleware do Starlette (cookie assinado).
-# uvicorn: iniciado pelo CLI `odc` (TF-144-05, cli.py fora da análise de imports por ora).
-DEP002 = ["itsdangerous", "uvicorn"]
+DEP002 = ["itsdangerous"]
 
 [tool.vulture]
 paths = ["src", "scripts"]
@@ -176,7 +174,6 @@ ignore_names = ["cls", "dotenv_settings", "file_secret_settings", "field", "trac
 [tool.odc.test-pairs]
 # Módulos de produção isentos de teste unitário pareado (plan 10.1).
 exclude = [
-    "src/odc/cli.py",
     "src/odc/storage/migrations/env.py",
     "src/odc/storage/migrations/versions/*",
 ]

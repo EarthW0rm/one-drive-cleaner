@@ -158,3 +158,19 @@ def test_caminhos_derivados_coincidem_com_o_modulo_paths(home: Path) -> None:
     assert settings.data_dir == paths.data_dir()
     assert settings.cache_dir == paths.cache_dir()
     assert settings.logs_dir == paths.logs_dir()
+
+
+def test_overrides_da_cli_tem_precedencia_sobre_ambiente(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ODC_PORT", "9100")
+
+    settings = load_settings({"port": 9200, "open_browser": False})
+
+    assert settings.port == 9200
+    assert settings.open_browser is False
+
+
+def test_overrides_invalidos_viram_config_error(home: Path) -> None:
+    with pytest.raises(ConfigError, match="campo 'port'"):
+        load_settings({"port": 80})

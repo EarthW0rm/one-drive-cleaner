@@ -109,3 +109,10 @@ def test_models_dir_fica_em_cache_models_com_permissao_privada(home: Path) -> No
     assert models == home / "Library" / "Caches" / "OneDriveCleaner" / "models"
     assert models.is_dir()
     assert _mode(models) == PRIVATE_MODE
+
+
+def test_local_db_path_fica_no_diretorio_de_dados_privado(home: Path) -> None:
+    db = paths.local_db_path()
+
+    assert db == home / "Library" / "Application Support" / "OneDriveCleaner" / "odc.db"
+    assert _mode(db.parent) == PRIVATE_MODE

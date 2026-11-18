@@ -6,6 +6,7 @@ Este é o único módulo autorizado a ler variáveis de ambiente do aplicativo.
 """
 
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, override
 
@@ -94,10 +95,14 @@ class AppSettings(BaseSettings):  # type: ignore[explicit-any]  # __init__ de Ba
         return paths.logs_dir()
 
 
-def load_settings() -> AppSettings:
-    """Carrega a configuração e converte erros de validação em `ConfigError` legível."""
+def load_settings(overrides: Mapping[str, object] | None = None) -> AppSettings:
+    """Carrega a configuração e converte erros de validação em `ConfigError` legível.
+
+    `overrides` (argumentos da CLI) têm precedência sobre ambiente e `config.toml`.
+    """
     try:
-        return AppSettings()
+        # Chaves vindas da CLI são validadas pelo pydantic na construção (tipo checado em runtime).
+        return AppSettings(**(overrides or {}))  # type: ignore[arg-type]
     except ValidationError as exc:
         details = "; ".join(
             f"campo '{'.'.join(str(part) for part in error['loc'])}': {error['msg']}"

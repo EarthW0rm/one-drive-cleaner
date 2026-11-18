@@ -48,6 +48,11 @@ def db_path(account_key: str) -> Path:
     return account_dir(account_key) / DB_FILE_NAME
 
 
+def local_db_path() -> Path:
+    """`odc.db` do estado local anterior ao login (sem conta ativa; ver TF-144-05)."""
+    return _ensure_private_dir(data_dir()) / DB_FILE_NAME
+
+
 def temp_dir() -> Path:
     """Diretório temporário (fallback) dentro do cache."""
     return _ensure_private_dir(cache_dir() / "tmp")
