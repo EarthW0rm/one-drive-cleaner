@@ -1,0 +1,7 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(driveItem)",
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/drive/items/FAKE-ROOT-0001/delta?token=FAKE-DELTA-0001",
+  "value": [
+    {"id": "FAKE-ITEM-0003", "deleted": {"state": "deleted"}}
+  ]
+}
