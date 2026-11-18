@@ -80,7 +80,10 @@ def test_failing_callback_does_not_stop_others(caplog: pytest.LogCaptureFixture)
         out = _collect(reader)
     assert out["odc.quarantine.bytes"] == [({}, 10.0)]
     assert not out.get("odc.review.queue")
-    assert any("omitida" in record.getMessage() for record in caplog.records)
+    assert any(
+        record.name == "odc.telemetry.observables" and "omitida" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_slow_callback_times_out() -> None:

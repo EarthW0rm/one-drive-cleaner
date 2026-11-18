@@ -15,6 +15,7 @@ from opentelemetry.trace import Span
 
 from odc.config import AppSettings
 from odc.telemetry import instrument as instrument_module
+from odc.telemetry import setup as telemetry_setup
 from odc.telemetry.instrument import HttpxHooks, instrument_all, with_redaction
 from odc.telemetry.redaction import RequestInfo, ResponseInfo
 from odc.telemetry.setup import init_telemetry
@@ -176,11 +177,18 @@ def test_falha_de_instrumentacao_e_logada_e_nao_propaga(
     with caplog.at_level(logging.WARNING, logger="odc.telemetry.instrument"):
         instrument_all(FastAPI(), memory.handle)
 
-    warnings = [r for r in caplog.records if r.message == "instrumentação não aplicada"]
+    warnings = [
+        r
+        for r in caplog.records
+        if r.name == "odc.telemetry.instrument" and r.message == "instrumentação não aplicada"
+    ]
     assert [getattr(r, "instrumentation", "") for r in warnings] == ["system_metrics"]
 
 
-def test_coletor_inalcancavel_nao_aumenta_a_latencia_das_requisicoes() -> None:
+def test_coletor_inalcancavel_nao_aumenta_a_latencia_das_requisicoes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(telemetry_setup, "EXPORT_TIMEOUT_S", 1.0)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -197,7 +205,7 @@ def test_coletor_inalcancavel_nao_aumenta_a_latencia_das_requisicoes() -> None:
         elapsed = time.monotonic() - started
 
     assert elapsed < 2
-    handle.shutdown(timeout_s=0.5)
+    assert handle.shutdown(timeout_s=10) is True  # sem export em background após o teste
 
 
 def test_span_do_servidor_exporta_so_atributos_permitidos(

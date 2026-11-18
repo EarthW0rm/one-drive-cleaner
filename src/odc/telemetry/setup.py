@@ -89,14 +89,16 @@ class TelemetryHandle:
     def _shutdown_all(self) -> None:
         if self._log_handler is not None:
             logging.getLogger().removeHandler(self._log_handler)
-        if self._restore_sdk_level is not None:
-            logging.getLogger("opentelemetry").setLevel(self._restore_sdk_level)
         for closer in reversed(self._closers):
             _safe(closer)
         for provider in (self.tracer_provider, self.meter_provider, self.logger_provider):
             shutdown = getattr(provider, "shutdown", None)
             if callable(shutdown):
                 _safe(shutdown)
+        # Só depois do flush final: falha de export nesse flush não pode vazar para o log do app
+        # (RN-25) nem para outros testes.
+        if self._restore_sdk_level is not None:
+            logging.getLogger("opentelemetry").setLevel(self._restore_sdk_level)
 
 
 def _safe(action: Closer) -> None:

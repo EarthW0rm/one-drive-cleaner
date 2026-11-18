@@ -150,7 +150,11 @@ def test_hook_nao_critico_que_falha_loga_erro_e_continua(
     created.engine.dispose()
 
     assert log == ["cleanup", "reconcile"]
-    errors = [record for record in caplog.records if record.levelno == logging.ERROR]
+    errors = [
+        record
+        for record in caplog.records
+        if record.name == "odc.bootstrap" and record.levelno == logging.ERROR
+    ]
     assert [getattr(record, "hook", None) for record in errors] == ["cleanup"]
 
 

@@ -100,7 +100,10 @@ def test_falha_no_setup_devolve_telemetria_desligada(
         handle = init_telemetry(AppSettings(), "1.0.0")
 
     assert handle.enabled is False
-    assert any(record.message.startswith("telemetria desativada") for record in caplog.records)
+    assert any(
+        record.name == "odc.telemetry.setup" and record.message.startswith("telemetria desativada")
+        for record in caplog.records
+    )
 
 
 def test_exportadores_otlp_usam_o_endpoint_configurado() -> None:
@@ -145,7 +148,8 @@ def test_closer_que_falha_nao_impede_o_encerramento(memory: MemoryTelemetry) -> 
     assert memory.handle.shutdown() is True
 
 
-def test_endpoint_fechado_nao_bloqueia_o_registro_de_spans() -> None:
+def test_endpoint_fechado_nao_bloqueia_o_registro_de_spans(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(telemetry_setup, "EXPORT_TIMEOUT_S", 1.0)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -162,7 +166,8 @@ def test_endpoint_fechado_nao_bloqueia_o_registro_de_spans() -> None:
     elapsed = time.monotonic() - started
 
     assert elapsed < 0.5
-    handle.shutdown(timeout_s=0.5)
+    # Espera o flush final: sem export em background após o teste (vazaria logs para outros).
+    assert handle.shutdown(timeout_s=10) is True
 
 
 def test_set_global_registra_os_tres_providers(monkeypatch: pytest.MonkeyPatch) -> None:
