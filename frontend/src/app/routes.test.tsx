@@ -5,6 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import { createQueryClient } from "../api/queryClient";
+import { onboardedHandlers, sessionHandler } from "../test/handlers";
+import { server } from "../test/server";
 
 import { AppRoutes } from "./routes";
 
@@ -20,5 +22,18 @@ describe("AppRoutes", () => {
 
     expect(screen.getByRole("heading", { name: "Entrar na conta Microsoft" })).toBeInTheDocument();
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("renderiza a tela de Varreduras em /varreduras", async () => {
+    server.use(sessionHandler(), ...onboardedHandlers());
+    render(
+      <QueryClientProvider client={createQueryClient(0)}>
+        <MemoryRouter initialEntries={["/varreduras"]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: /Varrer agora/ })).toBeInTheDocument();
   });
 });
