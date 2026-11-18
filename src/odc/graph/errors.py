@@ -54,3 +54,19 @@ class GraphUnsafeUrl(GraphError):  # noqa: N818 - nome alinhado às demais exce�
 
     def __init__(self) -> None:
         super().__init__("URL recusada: fora da origem da Graph")
+
+
+class ThumbnailTooLarge(GraphError):  # noqa: N818 - nome definido no contrato da TF-147-04
+    """Miniatura acima do limite em memória: o item segue para fallback ou falha."""
+
+    def __init__(self, *, limit: int) -> None:
+        super().__init__(f"Miniatura excede o limite de {limit} bytes")
+        self.limit = limit
+
+
+class ContentTooLarge(GraphError):  # noqa: N818 - nome definido no contrato da TF-147-04
+    """Conteúdo acima do limite de download: nada é gravado em disco."""
+
+    def __init__(self, *, limit: int) -> None:
+        super().__init__(f"Conteúdo excede o limite de {limit} bytes")
+        self.limit = limit

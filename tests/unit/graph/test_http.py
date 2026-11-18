@@ -819,3 +819,85 @@ class TestHelpers:
 
     def test_default_jitter_is_within_zero_and_one(self) -> None:
         assert all(0.0 <= _random_jitter() <= 1.0 for _ in range(50))
+
+
+@pytest.mark.asyncio
+class TestStream:
+    async def test_yields_unread_response_and_holds_slot_until_exit(self, h: Harness) -> None:
+        _item(h.router, _ok())
+
+        async with h.http.stream(OP, "GET", ITEM_PATH) as response:
+            assert h.limiter.inflight == 1
+            assert not response.is_closed
+            body = b"".join([chunk async for chunk in response.aiter_bytes()])
+
+        assert body == b'{"id":"FAKE-item"}'
+        assert h.limiter.inflight == 0
+        assert _is_closed(response)
+        assert h.metrics.requests == [(OP, 200, 0.25)]
+
+    async def test_slot_released_when_body_consumer_raises(self, h: Harness) -> None:
+        _item(h.router, _ok())
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await _stream_and_fail(h)
+
+        assert h.limiter.inflight == 0
+
+    async def test_retries_throttling_before_the_first_byte(self, h: Harness) -> None:
+        route = _item(h.router, httpx.Response(429, headers={"Retry-After": "2"}), _ok())
+
+        async with h.http.stream(OP, "GET", ITEM_PATH) as response:
+            assert response.status_code == 200
+
+        assert route.call_count == 2
+        assert h.sleeps == [2.0]
+        assert h.metrics.retries == [RetryOutcome.SUCCESS]
+
+    async def test_error_status_reads_body_and_raises_typed_error(self, h: Harness) -> None:
+        _item(h.router, httpx.Response(404, json={"error": {"code": "itemNotFound"}}))
+
+        with pytest.raises(GraphNotFound) as error:
+            async with h.http.stream(OP, "GET", ITEM_PATH):
+                pytest.fail("não deve entregar resposta de erro")
+
+        assert error.value.code == "itemNotFound"
+        assert h.limiter.inflight == 0
+
+    async def test_follows_redirect_to_cdn_without_authorization(self, h: Harness) -> None:
+        _item(h.router, httpx.Response(302, headers={"Location": CDN_URL}))
+        cdn = h.router.get(CDN_URL).respond(content=b"blob")
+
+        async with h.http.stream(OP, "GET", ITEM_PATH, follow_redirects=True) as response:
+            assert b"".join([c async for c in response.aiter_bytes()]) == b"blob"
+
+        assert "Authorization" not in cdn.calls.last.request.headers
+
+    async def test_unsafe_redirect_closes_response_and_raises(self, h: Harness) -> None:
+        _item(h.router, httpx.Response(302, headers={"Location": "http://cdn.example.invalid/x"}))
+
+        with pytest.raises(GraphClientError) as error:
+            async with h.http.stream(OP, "GET", ITEM_PATH, follow_redirects=True):
+                pytest.fail("não deve entregar resposta")
+
+        assert error.value.code == "unsafe_redirect"
+        assert h.limiter.inflight == 0
+
+    async def test_exhausted_retries_raise_unavailable(self, h: Harness) -> None:
+        _item(h.router, *[httpx.Response(503) for _ in range(MAX_ATTEMPTS)])
+
+        with pytest.raises(GraphUnavailable):
+            async with h.http.stream(OP, "GET", ITEM_PATH):
+                pytest.fail("não deve entregar resposta")
+
+        assert h.metrics.retries == [RetryOutcome.EXHAUSTED]
+
+
+async def _stream_and_fail(h: Harness) -> None:
+    async with h.http.stream(OP, "GET", ITEM_PATH):
+        message = "boom"
+        raise RuntimeError(message)
+
+
+def _is_closed(response: httpx.Response) -> bool:
+    return response.is_closed

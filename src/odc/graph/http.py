@@ -20,7 +20,8 @@ import logging
 import random
 import re
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC
 from email.utils import parsedate_to_datetime
 from types import TracebackType
@@ -213,11 +214,75 @@ class GraphHttp:
     ) -> httpx.Response:
         """Executa a chamada com retry/refresh. `path` é relativo à base (começa com `/`) ou uma
         URL absoluta da Graph (`nextLink`/`deltaLink`)."""
+        call = self._build_call(
+            op,
+            method,
+            path,
+            params=params,
+            json=json,
+            headers=headers,
+            timeout=timeout,
+            follow_redirects=follow_redirects,
+            stream=False,
+        )
+        async with self._limiter.slot():
+            return await self._guarded(call)
+
+    @asynccontextmanager
+    async def stream(  # noqa: PLR0913 - mesmo contrato de `request`
+        self,
+        op: GraphOperation,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, str] | None = None,
+        json: object | None = None,
+        headers: Mapping[str, str] | None = None,
+        timeout: httpx.Timeout | None = None,  # noqa: ASYNC109 - timeout httpx por operação
+        follow_redirects: bool = False,
+    ) -> AsyncIterator[httpx.Response]:
+        """Como `request`, mas devolve a resposta 2xx sem ler o corpo (use `aiter_bytes()`).
+
+        Token, retry, limiter e métricas valem até a resposta inicial; depois de iniciada a
+        leitura não há nova tentativa. A vaga do limitador fica ocupada até sair do contexto,
+        quando a resposta é fechada. Respostas de erro têm o corpo lido (pequeno) e viram exceções.
+        """
+        call = self._build_call(
+            op,
+            method,
+            path,
+            params=params,
+            json=json,
+            headers=headers,
+            timeout=timeout,
+            follow_redirects=follow_redirects,
+            stream=True,
+        )
+        async with self._limiter.slot():
+            response = await self._guarded(call)
+            try:
+                yield response
+            finally:
+                await response.aclose()
+
+    def _build_call(  # noqa: PLR0913 - parâmetros repassados de `request`/`stream`
+        self,
+        op: GraphOperation,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, str] | None,
+        json: object | None,
+        headers: Mapping[str, str] | None,
+        timeout: httpx.Timeout | None,
+        follow_redirects: bool,
+        stream: bool,
+    ) -> "_Call":
         verb = method.upper()
         if follow_redirects and verb not in REDIRECT_SAFE_METHODS:
             message = "follow_redirects só é permitido em GET/HEAD"
             raise ValueError(message)
-        call = _Call(
+        return _Call(
             op=op,
             method=verb,
             url=self._resolve(path),
@@ -226,11 +291,13 @@ class GraphHttp:
             headers={k: v for k, v in (headers or {}).items() if k.lower() != "authorization"},
             timeout=timeout if timeout is not None else timeout_for(op),
             follow_redirects=follow_redirects,
+            stream=stream,
         )
+
+    async def _guarded(self, call: "_Call") -> httpx.Response:
         tracker = _Tracker()
         try:
-            async with self._limiter.slot():
-                response = await self._execute(call, tracker)
+            response = await self._execute(call, tracker)
         except GraphUnavailable:
             self._record_retries(call.op, tracker, RetryOutcome.EXHAUSTED)
             raise
@@ -327,16 +394,23 @@ class GraphHttp:
         try:
             auth = {**call.headers, "Authorization": f"Bearer {token}"}
             response = await self._once(call, call.url, auth, with_body=True)
-            hops = 0
-            while call.follow_redirects and response.is_redirect:
-                hops += 1
-                if hops > MAX_REDIRECTS:
-                    raise GraphClientError(response.status_code, "too_many_redirects")
-                target = self._redirect_target(response)
-                same_origin = _origin(target) == _origin(self._base)
-                response = await self._once(
-                    call, target, auth if same_origin else {}, with_body=False
-                )
+            try:
+                hops = 0
+                while call.follow_redirects and response.is_redirect:
+                    hops += 1
+                    if hops > MAX_REDIRECTS:
+                        raise GraphClientError(response.status_code, "too_many_redirects")
+                    target = self._redirect_target(response)
+                    await response.aclose()
+                    same_origin = _origin(target) == _origin(self._base)
+                    response = await self._once(
+                        call, target, auth if same_origin else {}, with_body=False
+                    )
+                if call.stream and not response.is_success:
+                    await response.aread()
+            except BaseException:
+                await response.aclose()
+                raise
             return response
         finally:
             if self._metrics is not None:
@@ -353,7 +427,7 @@ class GraphHttp:
             headers=headers,
             timeout=call.timeout,
         )
-        return await self._client.send(request, follow_redirects=False)
+        return await self._client.send(request, stream=call.stream, follow_redirects=False)
 
     def _redirect_target(self, response: httpx.Response) -> httpx.URL:
         status = response.status_code
@@ -394,7 +468,17 @@ class GraphHttp:
 class _Call:
     """Parâmetros imutáveis de uma chamada (reaproveitados em cada tentativa)."""
 
-    __slots__ = ("follow_redirects", "headers", "json", "method", "op", "params", "timeout", "url")
+    __slots__ = (
+        "follow_redirects",
+        "headers",
+        "json",
+        "method",
+        "op",
+        "params",
+        "stream",
+        "timeout",
+        "url",
+    )
 
     def __init__(  # noqa: PLR0913 - agrupa os parâmetros da chamada
         self,
@@ -407,7 +491,9 @@ class _Call:
         headers: Mapping[str, str],
         timeout: httpx.Timeout,
         follow_redirects: bool,
+        stream: bool,
     ) -> None:
+        self.stream = stream
         self.op = op
         self.method = method
         self.url = url

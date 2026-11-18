@@ -2,6 +2,7 @@
 import pytest
 
 from odc.graph.errors import (
+    ContentTooLarge,
     GraphClientError,
     GraphConflict,
     GraphError,
@@ -10,6 +11,7 @@ from odc.graph.errors import (
     GraphPreconditionFailed,
     GraphUnavailable,
     GraphUnsafeUrl,
+    ThumbnailTooLarge,
 )
 
 
@@ -43,3 +45,12 @@ def test_unavailable_without_status_means_network_failure() -> None:
 
 def test_unsafe_url_message_has_no_url() -> None:
     assert "http" not in str(GraphUnsafeUrl())
+
+
+def test_size_limit_errors_carry_limit_without_other_details() -> None:
+    thumbnail = ThumbnailTooLarge(limit=10)
+    content = ContentTooLarge(limit=20)
+
+    assert (thumbnail.limit, content.limit) == (10, 20)
+    assert "10" in str(thumbnail)
+    assert "20" in str(content)
