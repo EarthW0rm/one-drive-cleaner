@@ -21,6 +21,32 @@ async function catchError(promise: Promise<unknown>): Promise<ApiError> {
   throw new Error("esperava ApiError");
 }
 
+describe("apiFetch — erro padrão", () => {
+  it("expõe error.details no ApiError", async () => {
+    const details = { fields: [{ loc: ["body", "auto_threshold"], type: "less_than_equal" }] };
+    server.use(
+      http.get(URL_ITEMS, () =>
+        HttpResponse.json(
+          { error: { code: "VALIDATION_ERROR", message: "Requisição inválida.", details } },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    const error = await catchError(apiFetch("/api/items"));
+
+    expect(error.details).toEqual(details);
+  });
+
+  it("usa null quando o envelope não traz details", async () => {
+    server.use(http.get(URL_ITEMS, () => errorResponse("NOT_FOUND", "x", 404)));
+
+    const error = await catchError(apiFetch("/api/items"));
+
+    expect(error.details).toBeNull();
+  });
+});
+
 describe("apiFetch", () => {
   it("retorna o JSON de uma requisição GET sem enviar CSRF", async () => {
     let csrf: string | null = "x";

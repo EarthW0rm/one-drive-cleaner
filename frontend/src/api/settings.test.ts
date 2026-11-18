@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { errorResponse, sessionHandler, TEST_ORIGIN } from "../test/handlers";
 import { server } from "../test/server";
 
-import { fetchSettings, saveAutomationMode } from "./settings";
+import { fetchSettings, isLoopbackEndpoint, saveAutomationMode } from "./settings";
 
 describe("fetchSettings", () => {
   it("devolve as configurações quando a rota existe", async () => {
@@ -43,5 +43,26 @@ describe("saveAutomationMode", () => {
     await saveAutomationMode("manual");
 
     expect(body).toEqual({ automation_mode: "manual" });
+  });
+});
+
+describe("isLoopbackEndpoint", () => {
+  it.each(["http://127.0.0.1:4317", "https://localhost:4318/v1/traces", "http://[::1]:4317"])(
+    "aceita loopback: %s",
+    (value) => {
+      expect(isLoopbackEndpoint(value)).toBe(true);
+    },
+  );
+
+  it.each([
+    // eslint-disable-next-line sonarjs/no-clear-text-protocols -- endpoint fora de loopback (teste de bloqueio)
+    "http://10.0.0.5:4317",
+    "http://example.com:4317",
+    "ftp://127.0.0.1:4317",
+    "127.0.0.1:4317",
+    "http://127.0.0.1:99999",
+    "",
+  ])("recusa endereço fora de loopback ou inválido: %s", (value) => {
+    expect(isLoopbackEndpoint(value)).toBe(false);
   });
 });

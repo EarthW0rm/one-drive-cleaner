@@ -6,11 +6,13 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "../pages/Login/LoginPage";
 import { OnboardingPage } from "../pages/Onboarding/OnboardingPage";
 import { ScansPage } from "../pages/Scans/ScansPage";
+import { SettingsPage } from "../pages/Settings/SettingsPage";
 
 import { AppLayout, ONBOARDING_PATH } from "./AppLayout";
 import { MENU_ITEMS } from "./menu";
 
 const HOME_PATH = "/revisao";
+const ROUTED_KEYS = new Set<string>(["/varreduras", "/configuracoes"]);
 
 function Placeholder({ title }: Readonly<{ title: string }>): ReactElement {
   return (
@@ -30,7 +32,8 @@ export function AppRoutes(): ReactElement {
         <Route index element={<Navigate to={HOME_PATH} replace />} />
         <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
         <Route path="/varreduras" element={<ScansPage />} />
-        {MENU_ITEMS.filter((item) => item.key !== "/varreduras").map((item) => (
+        <Route path="/configuracoes" element={<SettingsPage />} />
+        {MENU_ITEMS.filter((item) => !ROUTED_KEYS.has(item.key)).map((item) => (
           <Route key={item.key} path={item.key} element={<Placeholder title={item.label} />} />
         ))}
         <Route path="*" element={<Result status="404" title="Página não encontrada" />} />

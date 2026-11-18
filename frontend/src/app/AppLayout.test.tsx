@@ -36,7 +36,20 @@ function renderApp(path: string, mode: "light" | "dark" = "light", toggle = () =
 
 describe("AppLayout", () => {
   it("exibe o menu com as 6 telas e navega entre elas", async () => {
-    server.use(sessionHandler());
+    server.use(
+      sessionHandler(),
+      http.get(`${TEST_ORIGIN}/api/settings`, () =>
+        HttpResponse.json({
+          automation_mode: "evolutive",
+          auto_threshold: 0.98,
+          retrain_every: 20,
+          temp_cap_bytes: 2147483648,
+          otel_enabled: true,
+          otel_endpoint: "http://127.0.0.1:4317",
+          restart_required: false,
+        }),
+      ),
+    );
     const user = userEvent.setup();
     renderApp("/revisao");
 

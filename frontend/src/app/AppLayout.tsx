@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { BellOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, Badge, Button, Layout, Menu, Result, Space, Tag, Typography } from "antd";
 import { useEffect, type ReactElement } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
-import { apiFetch } from "../api/client";
-import { NEEDS_ONBOARDING_KEY, SCAN_ROOTS_KEY, useNeedsOnboarding } from "../api/folders";
-import { LOGIN_PATH, SESSION_KEY, useSession } from "../api/useSession";
+import { useNeedsOnboarding } from "../api/folders";
+import { useLogout, useSession } from "../api/useSession";
 
 import { errorMessage } from "./errors";
 import { MENU_ITEMS } from "./menu";
@@ -21,17 +19,8 @@ export function AppLayout(): ReactElement {
   const session = useSession();
   const { mode, toggle } = useTheme();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { pathname } = useLocation();
-  const logout = useMutation({
-    mutationFn: () => apiFetch<unknown>("/auth/logout", { method: "POST" }),
-    onSuccess: () => {
-      queryClient.removeQueries({ queryKey: SESSION_KEY });
-      queryClient.removeQueries({ queryKey: NEEDS_ONBOARDING_KEY });
-      queryClient.removeQueries({ queryKey: SCAN_ROOTS_KEY });
-      void navigate(LOGIN_PATH, { replace: true });
-    },
-  });
+  const logout = useLogout();
   const needsOnboarding = useNeedsOnboarding(session.data?.auth_state === "authenticated");
   const redirectToOnboarding = needsOnboarding.data === true && pathname !== ONBOARDING_PATH;
   useEffect(() => {

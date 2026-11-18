@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { ApiError, getSession, type SessionResponse } from "./client";
+import { apiFetch, ApiError, getSession, type SessionResponse } from "./client";
+import { NEEDS_ONBOARDING_KEY, SCAN_ROOTS_KEY } from "./folders";
 
 export const SESSION_KEY = ["session"] as const;
-export const LOGIN_PATH = "/login";
+const LOGIN_PATH = "/login";
 /** Valor de `location.state.reason` quando a sessão expira e o utilizador vai para `/login`. */
 export const SESSION_EXPIRED_REASON = "session_expired";
 
@@ -40,4 +41,19 @@ export function useSession(): SessionState {
   }, [redirectToLogin, pathname, navigate]);
 
   return { ...query, sessionExpired: wasAuthenticated && loginRequired };
+}
+
+/** Encerra a sessão local e volta para `/login`, descartando o cache de conta. */
+export function useLogout() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  return useMutation({
+    mutationFn: () => apiFetch<unknown>("/auth/logout", { method: "POST" }),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: SESSION_KEY });
+      queryClient.removeQueries({ queryKey: NEEDS_ONBOARDING_KEY });
+      queryClient.removeQueries({ queryKey: SCAN_ROOTS_KEY });
+      void navigate(LOGIN_PATH, { replace: true });
+    },
+  });
 }

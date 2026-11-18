@@ -24,12 +24,15 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;
+  /** `error.details` do envelope padrão (ex.: `{fields: [{loc, type}]}` no 422). */
+  readonly details: unknown;
 
-  constructor(code: ApiErrorCode, message: string, status: number) {
+  constructor(code: ApiErrorCode, message: string, status: number, details: unknown = null) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -55,7 +58,7 @@ async function toApiError(response: Response): Promise<ApiError> {
   const error = isRecord(body) ? body.error : undefined;
   if (isRecord(error) && typeof error.message === "string") {
     const code = isKnownCode(error.code) ? error.code : "INTERNAL";
-    return new ApiError(code, error.message, response.status);
+    return new ApiError(code, error.message, response.status, error.details ?? null);
   }
   return new ApiError("INTERNAL", response.statusText, response.status);
 }
