@@ -33,7 +33,7 @@ def test_upgrade_em_banco_vazio_chega_ao_head(tmp_path: Path) -> None:
     upgrade(db_path)
 
     head = ScriptDirectory.from_config(migrate._config()).get_current_head()
-    assert _scalar(db_path, "SELECT version_num FROM alembic_version") == head == "0002"
+    assert _scalar(db_path, "SELECT version_num FROM alembic_version") == head == "0003"
 
 
 def test_upgrade_e_idempotente_e_nao_duplica_seeds(tmp_path: Path) -> None:

@@ -74,7 +74,7 @@ def test_add_many_valida_origem_e_aceita_vazio(session: Session) -> None:
 
 def test_count_since_conta_rotulos_apos_a_versao(session: Session, make_item: ItemFactory) -> None:
     session.connection().exec_driver_sql(
-        "INSERT INTO embedding_model (id, name, dim, thumb_size, is_active) "
+        "INSERT OR REPLACE INTO embedding_model (id, name, dim, thumb_size, is_active) "
         "VALUES (1, 'f', 4, 'c', 1)"
     )
     category = _cat(session, "screenshot")

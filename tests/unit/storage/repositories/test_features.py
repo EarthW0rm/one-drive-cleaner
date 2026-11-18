@@ -21,7 +21,7 @@ DIM = 4
 def model_id(session: Session) -> int:
     session.execute(
         text(
-            "INSERT INTO embedding_model (id, name, dim, thumb_size, is_active) "
+            "INSERT OR REPLACE INTO embedding_model (id, name, dim, thumb_size, is_active) "
             "VALUES (1, 'fake', :dim, 'c384x384', 1)"
         ),
         {"dim": DIM},

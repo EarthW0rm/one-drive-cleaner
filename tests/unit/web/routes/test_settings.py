@@ -55,7 +55,7 @@ def with_current_model(engine: Engine) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "INSERT INTO embedding_model (id, name, dim, thumb_size, is_active) "
+                "INSERT OR REPLACE INTO embedding_model (id, name, dim, thumb_size, is_active) "
                 "VALUES (1, 'f', 4, 'c', 1)"
             )
         )

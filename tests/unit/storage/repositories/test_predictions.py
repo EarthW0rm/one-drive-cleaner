@@ -17,7 +17,7 @@ NOW = "2026-11-17T10:00:00+00:00"
 @pytest.fixture
 def version_id(session: Session) -> int:
     session.connection().exec_driver_sql(
-        "INSERT INTO embedding_model (id, name, dim, thumb_size, is_active) "
+        "INSERT OR REPLACE INTO embedding_model (id, name, dim, thumb_size, is_active) "
         "VALUES (1, 'f', 4, 'c', 1)"
     )
     return models.create_candidate(

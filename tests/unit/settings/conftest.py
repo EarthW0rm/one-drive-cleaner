@@ -10,7 +10,8 @@ from odc.storage.engine import create_engine_for
 from odc.storage.migrate import upgrade
 
 EMBEDDING_MODEL_SQL = (
-    "INSERT INTO embedding_model (id, name, dim, thumb_size, is_active) VALUES (1, 'f', 4, 'c', 1)"
+    "INSERT OR REPLACE INTO embedding_model (id, name, dim, thumb_size, is_active) "
+    "VALUES (1, 'f', 4, 'c', 1)"
 )
 MODEL_VERSION_SQL = (
     "INSERT INTO model_version (id, strategy, embedding_model_id, status, labels_count, "

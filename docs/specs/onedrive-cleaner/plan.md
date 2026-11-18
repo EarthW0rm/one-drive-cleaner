@@ -748,6 +748,8 @@ Concorrência adaptativa (AIMD): limite inicial 4, mínimo 1, máximo 16. Cada 4
 
 Delta em pasta não-raiz é suportado no OneDrive pessoal (justifica RN-01 e o uso de delta por `scan_root`).
 
+Tamanho de miniatura customizado: **suportado e escolhido** (confirmado em 2026-11-18 pela coleta real do spike da US-150). A Graph atendeu `thumbnails/0/c384x384/content` para todas as 392 imagens da amostra (sem fallback de redimensionamento local), de modo que `thumb_size = c384x384` é o valor semeado em `embedding_model` (migração `0003`). O tamanho `large` (800 px) também foi atendido e fica como alternativa de reextração.
+
 ### 4.3 Fila interna de jobs (payloads)
 
 Não há broker. Cada `job.payload` é validado por schema pydantic por `type` antes da execução (Zero Trust na leitura do banco). Claim atômico: `UPDATE ... SET status='running', heartbeat_at=now WHERE id = (SELECT ... ORDER BY priority DESC, created_at LIMIT 1) AND status='queued'`. Job `running` com `heartbeat_at` > 2 min no startup → volta a `queued` (`odc.jobs.resumed`).
@@ -979,6 +981,25 @@ A tela Métricas da UI calcula os mesmos alertas a partir do banco (funciona sem
 | Medições | Acurácia e `removable_precision` com regressão logística em validação cruzada 5-fold; tempo extrapolado para 5 mil imagens no M3 (download + embedding, MPS); pico de memória; tamanho dos pesos; disco dos vetores para 50 mil |
 | Critério de escolha | Maior `removable_precision`; empate técnico (≤ 1 p.p.) → menor tempo/disco |
 | Saída | `spikes/embedding_benchmark/RESULT.md` com tabela de resultados; valor de `embedding_model` e `thumb_size` no seed da migração |
+
+### 7.1 Resultado e decisão (2026-11-18)
+
+Benchmark executado em MPS sobre 392 imagens reais do Camera Roll, revisadas pelo utilizador (screenshot 186, real_photo 202, meme_sticker 4, document_receipt 0), com validação cruzada de 4 folds estratificados (reduzida de 5 pela baixa contagem de categorias). Métricas agregadas em `spikes/embedding_benchmark/RESULT.md` (versionado, sem nomes, IDs ou caminhos); a amostra foi removida (`purge`) após a decisão.
+
+| Candidato (embedding, miniatura 384 px) | removable_precision@0,98 | Suporte | Acurácia | s/img (MPS) | Projeção 50 mil | Pesos | Vetores 50 mil |
+|---|---|---|---|---|---|---|---|
+| `ViT-B-32/laion2b_s34b_b79k` | 100,0% | 20 | 87,0% | 0,0042 | 3,5 min | 605 MB | 51,2 MB |
+| `ViT-SO400M-14-SigLIP-384/webli` | 100,0% | 21 | 86,5% | 0,1628 | 135,6 min | 3512 MB | 115,2 MB |
+
+Os dois candidatos empatam tecnicamente (<= 1 p.p.) com 100% de precisão em 384 px; pelo critério do item 7 (menor tempo/disco) vence o `ViT-B-32`: cerca de 39 vezes mais rápido, 6 vezes menos disco de pesos e 2,25 vezes menos disco de vetores. A recomendação considera apenas o embedding; as linhas "+ meta" do relatório são informativas.
+
+**Decisão aprovada pelo utilizador em 2026-11-18:** modelo `ViT-B-32` com pretrained `laion2b_s34b_b79k` (512 dimensões, licença MIT dos pesos), miniatura `c384x384`. Semeado em `embedding_model` pela migração `0003_embedding_model` (`is_active = 1`).
+
+Ressalvas aceitas explicitamente pelo utilizador:
+
+- `removable_precision >= 0,98` **não comprovada estatisticamente**: suporte < 30 na linha recomendada (20) e amostra desbalanceada (meme_sticker 4, document_receipt 0). O valor medido (100%) é indicativo, não garantia.
+- A garantia de 98% fica com o gate Evolutivo (RN-15; `gate_precision` 0,98, `gate_min_labels` 200, `gate_min_support` 30): o modo Automático só é liberado após a precisão ser medida sobre os rótulos reais do utilizador.
+- Uma eventual troca de modelo exige reextração (`is_active`).
 
 ## 8. Justificativa e Trade-offs
 

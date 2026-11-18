@@ -50,7 +50,7 @@ def _insert_item(conn: Connection, item_id: int = 1, state: str = "DESCOBERTO") 
 def _insert_embedding_model(conn: Connection) -> None:
     conn.execute(
         text(
-            "INSERT INTO embedding_model (id, name, dim, thumb_size, is_active)"
+            "INSERT OR REPLACE INTO embedding_model (id, name, dim, thumb_size, is_active)"
             " VALUES (1, 'm', 512, 'c384x384', 1)"
         )
     )
@@ -282,8 +282,10 @@ def test_seed_de_settings(conn: Connection) -> None:
     }
 
 
-def test_embedding_model_sem_seed(conn: Connection) -> None:
-    assert conn.execute(text("SELECT COUNT(id) FROM embedding_model")).scalar_one() == 0
+def test_embedding_model_tem_o_seed_do_benchmark(conn: Connection) -> None:
+    rows = conn.execute(text("SELECT name, dim, thumb_size, is_active FROM embedding_model")).all()
+
+    assert [tuple(r) for r in rows] == [("ViT-B-32/laion2b_s34b_b79k", 512, "c384x384", 1)]
 
 
 def test_indices_do_plan_3_2_existem(conn: Connection) -> None:
