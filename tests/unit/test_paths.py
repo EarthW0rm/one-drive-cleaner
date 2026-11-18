@@ -95,6 +95,14 @@ def test_db_path_rejeita_chave_com_caminho(home: Path) -> None:
         paths.db_path("../outra")
 
 
+def test_auth_dir_fica_em_data_dir_com_permissao_privada(home: Path) -> None:
+    auth = paths.auth_dir()
+
+    assert auth == paths.data_dir() / "auth"
+    assert auth.is_dir()
+    assert _mode(auth) == PRIVATE_MODE
+
+
 def test_temp_dir_fica_em_cache_tmp_com_permissao_privada(home: Path) -> None:
     temp = paths.temp_dir()
 

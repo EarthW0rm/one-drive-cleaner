@@ -53,6 +53,11 @@ def local_db_path() -> Path:
     return _ensure_private_dir(data_dir()) / DB_FILE_NAME
 
 
+def auth_dir() -> Path:
+    """Arquivos auxiliares do cache de tokens (sinal de modificação e lock); sem segredos."""
+    return _ensure_private_dir(data_dir() / "auth")
+
+
 def temp_dir() -> Path:
     """Diretório temporário (fallback) dentro do cache."""
     return _ensure_private_dir(cache_dir() / "tmp")
