@@ -1,0 +1,56 @@
+name: Bug
+description: Relatar um comportamento incorreto do OneDrive Cleaner
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de continuar: **não cole dados pessoais**, como nomes de arquivos, caminhos de pastas, fotos, `client_id`, tokens ou logs com esses dados.
+        Vulnerabilidades de segurança **não** devem ser reportadas aqui. Use o procedimento de [SECURITY.md](../../SECURITY.md).
+  - type: textarea
+    id: descricao
+    attributes:
+      label: Descrição do problema
+      description: O que aconteceu e o que você esperava que acontecesse.
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do OneDrive Cleaner
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: Versão do macOS
+      placeholder: "15.x"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Versão do Python
+      placeholder: "3.12.x"
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs relevantes (já sem dados pessoais)
+      description: Revise o conteúdo antes de colar. Remova nomes de arquivos, caminhos e identificadores.
+      render: text
+    validations:
+      required: false
