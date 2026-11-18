@@ -18,6 +18,7 @@ dependencies = [
     "msal>=1.39.0",
     "msal-extensions>=1.3.1",
     "numpy>=2.5.5",
+    "open-clip-torch>=4.2.2",
     "opentelemetry-exporter-otlp-proto-grpc>=1.45.2",
     "opentelemetry-instrumentation-fastapi>=0.66b2",
     "opentelemetry-instrumentation-httpx>=0.66b2",
@@ -25,10 +26,12 @@ dependencies = [
     "opentelemetry-instrumentation-system-metrics>=0.66b2",
     "opentelemetry-sdk>=1.45.2",
     "platformdirs>=4.14.7",
+    "pillow>=13.0.0",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
     "sqlalchemy>=2",
     "starlette>=1.10.0",
+    "torch>=2.15.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -47,7 +50,6 @@ dev = [
     "deptry",
     "import-linter",
     "mypy",
-    "pillow>=13.0.0",
     "pip-audit",
     "pre-commit>=4.7.0",
     "pytest",
@@ -60,14 +62,12 @@ dev = [
     "types-pyyaml",
     "vulture",
 ]
-# Spike de benchmark (TF-150): `uv sync --group ml`. Fora do `uv sync` padrão por causa do tamanho do torch.
+# Spike de benchmark (TF-150): `uv sync --group ml`. torch, open-clip-torch e pillow são
+# dependências de runtime (embedder de produção, TF-151-02); o grupo guarda só o que o spike
+# acrescenta.
 ml = [
-    "numpy>=2.5.5",
-    "open-clip-torch>=4.2.2",
-    "pillow>=13.0.0",
     "pillow-heif>=1.8.1",
     "scikit-learn>=1.9.1",
-    "torch>=2.15.0",
 ]
 
 [tool.ruff]
@@ -195,7 +195,8 @@ extend_exclude = ["scripts", "tests", "spikes"]
 
 [tool.deptry.per_rule_ignores]
 # itsdangerous: exigido em runtime pelo SessionMiddleware do Starlette (cookie assinado).
-DEP002 = ["itsdangerous"]
+# torch e open-clip-torch: importados por importlib em odc.features.embedder (isolamento de tipos).
+DEP002 = ["itsdangerous", "torch", "open-clip-torch"]
 
 [tool.vulture]
 paths = ["src", "scripts", "spikes"]

@@ -53,6 +53,15 @@ class FeatureRow:
 
 
 @dataclass(frozen=True, slots=True)
+class EmbeddingModelRow:
+    id: int
+    name: str
+    dim: int
+    thumb_size: str
+    is_active: bool
+
+
+@dataclass(frozen=True, slots=True)
 class CategoryRow:
     id: int
     slug: str

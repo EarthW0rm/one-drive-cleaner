@@ -1186,17 +1186,20 @@ dependencies = [
     { name = "msal" },
     { name = "msal-extensions" },
     { name = "numpy" },
+    { name = "open-clip-torch" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-logging" },
     { name = "opentelemetry-instrumentation-system-metrics" },
     { name = "opentelemetry-sdk" },
+    { name = "pillow" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
     { name = "starlette" },
+    { name = "torch" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1206,7 +1209,6 @@ dev = [
     { name = "deptry" },
     { name = "import-linter" },
     { name = "mypy" },
-    { name = "pillow" },
     { name = "pip-audit" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -1220,12 +1222,8 @@ dev = [
     { name = "vulture" },
 ]
 ml = [
-    { name = "numpy" },
-    { name = "open-clip-torch" },
-    { name = "pillow" },
     { name = "pillow-heif" },
     { name = "scikit-learn" },
-    { name = "torch" },
 ]
 
 [package.metadata]
@@ -1237,17 +1235,20 @@ requires-dist = [
     { name = "msal", specifier = ">=1.39.0" },
     { name = "msal-extensions", specifier = ">=1.3.1" },
     { name = "numpy", specifier = ">=2.5.5" },
+    { name = "open-clip-torch", specifier = ">=4.2.2" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.45.2" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.66b2" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.66b2" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.66b2" },
     { name = "opentelemetry-instrumentation-system-metrics", specifier = ">=0.66b2" },
     { name = "opentelemetry-sdk", specifier = ">=1.45.2" },
+    { name = "pillow", specifier = ">=13.0.0" },
     { name = "platformdirs", specifier = ">=4.14.7" },
     { name = "pydantic", specifier = ">=2.14.3" },
     { name = "pydantic-settings", specifier = ">=2.16.3" },
     { name = "sqlalchemy", specifier = ">=2" },
     { name = "starlette", specifier = ">=1.10.0" },
+    { name = "torch", specifier = ">=2.15.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
@@ -1257,7 +1258,6 @@ dev = [
     { name = "deptry" },
     { name = "import-linter" },
     { name = "mypy" },
-    { name = "pillow", specifier = ">=13.0.0" },
     { name = "pip-audit" },
     { name = "pre-commit", specifier = ">=4.7.0" },
     { name = "pytest" },
@@ -1271,12 +1271,8 @@ dev = [
     { name = "vulture" },
 ]
 ml = [
-    { name = "numpy", specifier = ">=2.5.5" },
-    { name = "open-clip-torch", specifier = ">=4.2.2" },
-    { name = "pillow", specifier = ">=13.0.0" },
     { name = "pillow-heif", specifier = ">=1.8.1" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
-    { name = "torch", specifier = ">=2.15.0" },
 ]
 
 [[package]]
