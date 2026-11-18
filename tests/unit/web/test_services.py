@@ -3,6 +3,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 
+from odc.storage.account_db import AccountDatabase
 from odc.web import services as services_module
 from odc.web.services import AppServices, LoginRequiredGateway, default_static_dir
 
@@ -21,10 +22,10 @@ def test_static_dir_padrao_fica_dentro_do_pacote_web() -> None:
 
 
 def test_segredo_de_sessao_e_aleatorio_por_instancia_e_fora_do_repr() -> None:
-    engine = create_engine("sqlite://")
+    database = AccountDatabase(create_engine("sqlite://"), Path("odc.db"))
 
-    first = AppServices(engine=engine)
-    second = AppServices(engine=engine)
+    first = AppServices(database=database)
+    second = AppServices(database=database)
 
     assert first.session_secret != second.session_secret
     assert len(first.session_secret) >= 32

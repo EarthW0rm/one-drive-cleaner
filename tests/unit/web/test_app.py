@@ -14,7 +14,13 @@ def test_openapi_e_publicado_em_api_openapi_json(client: TestClient) -> None:
     schema = response.json()
     assert response.status_code == 200
     assert schema["info"]["version"] == API_VERSION
-    assert set(schema["paths"]) == {"/healthz", "/api/session"}
+    assert set(schema["paths"]) == {
+        "/healthz",
+        "/api/session",
+        "/auth/login",
+        "/auth/callback",
+        "/auth/logout",
+    }
 
 
 def test_openapi_declara_erro_padrao_e_enum_de_codigos(client: TestClient) -> None:
@@ -45,7 +51,7 @@ def test_docs_interativas_ficam_desligadas(client: TestClient) -> None:
 
 def test_sessao_de_outro_processo_nao_e_aceita(services: AppServices) -> None:
     settings = AppSettings.model_construct()
-    other = AppServices(engine=services.engine, static_dir=services.static_dir)
+    other = AppServices(database=services.database, static_dir=services.static_dir)
     with (
         TestClient(create_app(settings, services), base_url=BASE_URL) as first,
         TestClient(create_app(settings, other), base_url=BASE_URL) as second,

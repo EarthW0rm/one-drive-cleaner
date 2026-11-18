@@ -62,7 +62,7 @@ def create_system_router(services: AppServices) -> APIRouter:
         responses={HTTP_SERVICE_UNAVAILABLE: {"model": HealthResponse}},
     )
     def healthz(response: Response) -> HealthResponse:
-        db = _db_status(services.engine)
+        db = _db_status(services.database.engine)
         if db == "error":
             response.status_code = HTTP_SERVICE_UNAVAILABLE
         return HealthResponse(
@@ -75,8 +75,8 @@ def create_system_router(services: AppServices) -> APIRouter:
     def get_session(request: Request) -> SessionResponse:
         token = ensure_csrf_token(request)
         state = services.auth.auth_state()
-        name = services.auth.display_name() if state == "authenticated" else None
-        account = AccountInfo(display_name=name) if name is not None else None
+        active = services.auth.active_account() if state == "authenticated" else None
+        account = AccountInfo(display_name=active.display_name) if active is not None else None
         return SessionResponse(csrf_token=token, auth_state=state, account=account)
 
     return router

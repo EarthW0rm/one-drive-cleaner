@@ -23,14 +23,17 @@ import uvicorn
 from fastapi import FastAPI
 from sqlalchemy import Engine
 
-from odc import paths
+from odc.auth.errors import AuthError
+from odc.auth.models import Account
+from odc.auth.service import AuthService
 from odc.config import AppSettings
-from odc.storage.engine import create_engine_for
-from odc.storage.migrate import MigrationError, upgrade
+from odc.storage.account_db import AccountDatabase
+from odc.storage.migrate import MigrationError
 from odc.telemetry.instrument import HttpxHooks, instrument_all
+from odc.telemetry.metrics import Metrics
 from odc.telemetry.setup import TelemetryHandle, init_telemetry
 from odc.web.app import create_app
-from odc.web.services import AppServices
+from odc.web.services import AppServices, AuthGateway
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +60,19 @@ class Runtime:
     """Recursos prontos após o bootstrap: configuração, banco, engine e app."""
 
     settings: AppSettings
-    db_path: Path
-    engine: Engine
+    database: AccountDatabase
     app: FastAPI
     telemetry: TelemetryHandle
+
+    @property
+    def engine(self) -> Engine:
+        """Engine vigente (muda no login/logout)."""
+        return self.database.engine
+
+    @property
+    def db_path(self) -> Path:
+        """Banco vigente: local antes do login, `accounts/<account_key>/odc.db` depois."""
+        return self.database.db_path
 
 
 class StartupHook(Protocol):
@@ -100,28 +112,42 @@ def _package_version() -> str:
         return "0.0.0"
 
 
+def _startup_account(auth: AuthGateway) -> Account | None:
+    """Conta ativa guardada no Keychain; indisponível equivale a sem conta (login exigido)."""
+    try:
+        return auth.active_account()
+    except AuthError as error:
+        logger.error("conta ativa indisponível", extra={"error_type": type(error).__name__})
+        return None
+
+
 def bootstrap(
     settings: AppSettings,
     hooks: Sequence[StartupHook] = (),
     httpx_hooks: HttpxHooks | None = None,
+    auth: AuthGateway | None = None,
 ) -> Runtime:
-    """Aplica migrações, inicializa a telemetria, executa os hooks e monta a aplicação FastAPI.
+    """Inicializa a telemetria, abre o banco, executa os hooks e monta a aplicação FastAPI.
 
-    A telemetria sobe antes do app e nunca impede a inicialização (RN-25).
+    O banco é o da conta ativa (se houver) ou o local anterior ao login. A telemetria nunca
+    impede a inicialização (RN-25); sem `client_id` o app sobe e o login responde
+    `not_configured`.
     """
-    db_path = paths.local_db_path()
+    telemetry = init_telemetry(settings, _package_version())
+    if auth is None:
+        auth = AuthService(settings.client_id, metrics=Metrics.create(telemetry.meter_provider))
+    account = _startup_account(auth)
     try:
-        upgrade(db_path)
+        database = AccountDatabase.open(
+            account.account_key if account else None, account.drive_id if account else None
+        )
     except MigrationError as error:
+        telemetry.shutdown()
         message = f"falha na migração do banco ({error.code})."
         raise BootstrapError(EXIT_FAILURE, message) from error
-    engine = create_engine_for(db_path)
-    telemetry = init_telemetry(settings, _package_version())
-    app = create_app(settings, AppServices(engine=engine))
+    app = create_app(settings, AppServices(database=database, auth=auth))
     instrument_all(app, telemetry, httpx_hooks)
-    runtime = Runtime(
-        settings=settings, db_path=db_path, engine=engine, app=app, telemetry=telemetry
-    )
+    runtime = Runtime(settings=settings, database=database, app=app, telemetry=telemetry)
     try:
         for hook in hooks:
             _run_hook(hook, runtime)

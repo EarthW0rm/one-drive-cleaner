@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, FastAPI
 
 from odc.config import AppSettings
 from odc.web.errors import ERROR_RESPONSES, AppError, ErrorCode, register_error_handlers
+from odc.web.routes.auth import create_auth_router
 from odc.web.routes.system import create_system_router
 from odc.web.security import install_security, require_csrf
 from odc.web.services import AppServices
@@ -34,7 +35,7 @@ def _unknown_api_router() -> APIRouter:
 
 
 def create_app(settings: AppSettings, services: AppServices) -> FastAPI:
-    """Monta `/healthz`, `/api`, `/auth` (placeholder da US-146) e a SPA.
+    """Monta `/healthz`, `/api`, `/auth` e a SPA.
 
     Sem CORS: a SPA é servida pela própria origem. Docs interativas ficam desligadas
     (carregariam scripts externos, bloqueados pela CSP).
@@ -51,6 +52,7 @@ def create_app(settings: AppSettings, services: AppServices) -> FastAPI:
     register_error_handlers(app)
     install_security(app, secret=services.session_secret, port=settings.port)
     app.include_router(create_system_router(services))
+    app.include_router(create_auth_router(services, settings.port))
     app.include_router(_unknown_api_router())
     register_spa(app, services.static_dir)
     return app

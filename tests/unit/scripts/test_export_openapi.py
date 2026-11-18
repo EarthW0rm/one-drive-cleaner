@@ -12,7 +12,13 @@ def test_schema_contem_rotas_de_sistema() -> None:
 
     paths = schema["paths"]
     assert isinstance(paths, dict)
-    assert set(paths) == {"/healthz", "/api/session"}
+    assert set(paths) == {
+        "/healthz",
+        "/api/session",
+        "/auth/login",
+        "/auth/callback",
+        "/auth/logout",
+    }
 
 
 def test_render_e_deterministico_e_termina_com_quebra_de_linha() -> None:

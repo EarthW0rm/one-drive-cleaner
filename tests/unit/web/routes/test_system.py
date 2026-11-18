@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine
 
 from odc.config import AppSettings
+from odc.storage.account_db import AccountDatabase
 from odc.web.app import create_app
 from odc.web.services import AppServices
 
@@ -64,7 +65,11 @@ def test_healthz_com_banco_indisponivel_retorna_503(
 ) -> None:
     engine.dispose()
     broken_engine = create_engine(f"sqlite:///{tmp_path / 'sem' / 'diretorio' / 'odc.db'}")
-    broken = AppServices(engine=broken_engine, auth=services.auth, static_dir=services.static_dir)
+    broken = AppServices(
+        database=AccountDatabase(broken_engine, tmp_path / "x.db"),
+        auth=services.auth,
+        static_dir=services.static_dir,
+    )
     app = create_app(AppSettings.model_construct(), broken)
 
     with TestClient(app, base_url=BASE_URL) as client:

@@ -13,6 +13,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 
 from odc.config import AppSettings
+from odc.storage.account_db import AccountDatabase
 from odc.web.app import create_app
 from odc.web.services import AppServices
 
@@ -23,7 +24,7 @@ DEFAULT_OUTPUT = (
 
 def build_schema() -> dict[str, object]:
     """OpenAPI gerado por uma aplicação com padrões fixos e banco em memória (não acessado)."""
-    services = AppServices(engine=create_engine("sqlite://"))
+    services = AppServices(database=AccountDatabase(create_engine("sqlite://"), Path("odc.db")))
     app = create_app(AppSettings.model_construct(), services)
     schema: dict[str, object] = app.openapi()
     return schema

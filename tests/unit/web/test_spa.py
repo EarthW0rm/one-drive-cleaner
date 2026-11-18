@@ -106,7 +106,9 @@ def test_symlink_para_fora_do_diretorio_e_bloqueado(client: TestClient, static_d
 
 
 def test_sem_build_da_spa_retorna_404_padrao(services: AppServices, tmp_path: Path) -> None:
-    empty = AppServices(engine=services.engine, auth=services.auth, static_dir=tmp_path / "vazio")
+    empty = AppServices(
+        database=services.database, auth=services.auth, static_dir=tmp_path / "vazio"
+    )
     app = create_app(AppSettings.model_construct(), empty)
     with TestClient(app, base_url=BASE_URL) as client:
         response = client.get("/")

@@ -18,6 +18,9 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from odc import bootstrap as bootstrap_module
+from odc.account_key import account_key
+from odc.auth.errors import KeychainUnavailableError
+from odc.auth.models import Account
 from odc.bootstrap import (
     EXIT_FAILURE,
     EXIT_OK,
@@ -29,6 +32,7 @@ from odc.bootstrap import (
     run,
 )
 from odc.config import AppSettings
+from odc.storage import account_db as account_db_module
 from odc.storage.migrate import MigrationError
 from odc.telemetry.setup import Exporters, TelemetryHandle, init_telemetry
 
@@ -44,6 +48,34 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         if name.startswith("ODC_"):
             monkeypatch.delenv(name)
     return tmp_path
+
+
+class FakeAuthService:
+    """Dublê de `AuthService`: sem Keychain, MSAL nem rede."""
+
+    instances: list["FakeAuthService"] = []  # noqa: RUF012 - registro dos testes
+    account: Account | None = None
+    error: Exception | None = None
+
+    def __init__(self, client_id: str | None, *, metrics: object = None) -> None:
+        self.client_id = client_id
+        self.metrics = metrics
+        type(self).instances.append(self)
+
+    def active_account(self) -> Account | None:
+        error = type(self).error
+        if error is not None:
+            raise error
+        return type(self).account
+
+
+@pytest.fixture(autouse=True)
+def fake_auth(monkeypatch: pytest.MonkeyPatch) -> type[FakeAuthService]:
+    FakeAuthService.instances = []
+    FakeAuthService.account = None
+    FakeAuthService.error = None
+    monkeypatch.setattr(bootstrap_module, "AuthService", FakeAuthService)
+    return FakeAuthService
 
 
 @pytest.fixture
@@ -143,7 +175,7 @@ def test_falha_de_migracao_retorna_exit_2(
     def failing_upgrade(db_path: Path) -> None:
         raise MigrationError("DB_FUTURE_VERSION", "versão desconhecida")
 
-    monkeypatch.setattr(bootstrap_module, "upgrade", failing_upgrade)
+    monkeypatch.setattr(account_db_module, "upgrade", failing_upgrade)
 
     with pytest.raises(BootstrapError) as error:
         bootstrap(AppSettings(port=free_port, otel_enabled=False))
@@ -354,3 +386,70 @@ def test_package_version_usa_metadados_e_cai_para_padrao(
     monkeypatch.setattr(metadata, "version", missing)
 
     assert bootstrap_module._package_version() == "0.0.0"
+
+
+CLIENT_ID = "11111111-2222-3333-4444-555555555555"
+
+
+def test_bootstrap_cria_o_auth_service_com_client_id_e_metricas(
+    home: Path, free_port: int, fake_auth: type[FakeAuthService]
+) -> None:
+    created = bootstrap(AppSettings(port=free_port, otel_enabled=False, client_id=CLIENT_ID))
+    created.engine.dispose()
+
+    assert [(a.client_id, a.metrics is not None) for a in fake_auth.instances] == [
+        (CLIENT_ID, True)
+    ]
+
+
+def test_bootstrap_sem_client_id_sobe_com_banco_local(
+    home: Path, free_port: int, fake_auth: type[FakeAuthService]
+) -> None:
+    created = bootstrap(AppSettings(port=free_port, otel_enabled=False))
+    created.engine.dispose()
+
+    assert fake_auth.instances[0].client_id is None
+    assert (
+        created.db_path == home / "Library" / "Application Support" / "OneDriveCleaner" / "odc.db"
+    )
+
+
+def test_bootstrap_com_conta_ativa_usa_o_banco_da_conta(
+    home: Path, free_port: int, fake_auth: type[FakeAuthService]
+) -> None:
+    key = account_key("uid.utid")
+    fake_auth.account = Account(key, "Maria", "drive-1")
+
+    created = bootstrap(AppSettings(port=free_port, otel_enabled=False))
+    created.engine.dispose()
+
+    assert created.db_path.parent.name == key
+    assert created.database.account_key == key
+
+
+def test_bootstrap_com_keychain_indisponivel_segue_sem_conta(
+    home: Path, free_port: int, fake_auth: type[FakeAuthService]
+) -> None:
+    fake_auth.error = KeychainUnavailableError("bloqueado")
+
+    created = bootstrap(AppSettings(port=free_port, otel_enabled=False))
+    created.engine.dispose()
+
+    assert created.database.account_key is None
+
+
+def test_falha_de_migracao_encerra_a_telemetria(
+    home: Path,
+    free_port: int,
+    monkeypatch: pytest.MonkeyPatch,
+    memory_exporters: "_MemoryExporters",
+) -> None:
+    def failing_upgrade(db_path: Path) -> None:
+        raise MigrationError("DISK_FULL", "sem espaço")
+
+    monkeypatch.setattr(account_db_module, "upgrade", failing_upgrade)
+
+    with pytest.raises(BootstrapError):
+        bootstrap(AppSettings(port=free_port))
+
+    assert memory_exporters.handles[0].closed is True
