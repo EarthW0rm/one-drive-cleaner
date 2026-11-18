@@ -253,19 +253,16 @@ async def test_queda_da_rede_pausa_o_job_sem_gravar_e_o_lote_e_refeito_na_retoma
     flow.fake.faults.add(fail_network(GraphOperation.THUMBNAIL_CONTENT, times=None))
     await _scan(flow)
 
-    await wait_until(lambda: "paused" in _extract_statuses(flow), timeout_s=60)
+    # Os dois lotes pausam, um depois do outro: limpar a falha com o segundo ainda em execução
+    # o deixaria pausar depois da retomada e nunca mais ser retomado.
+    await wait_until(lambda: _extract_statuses(flow) == ["paused", "paused"], timeout_s=60)
 
-    paused = [
-        job_id for job_id in _extract_job_ids(flow.db) if _status(flow.queue, job_id) == "paused"
-    ]
-    assert paused
     assert set(states(flow.db).values()) == {"DESCOBERTO"}  # nada commitado
     assert _matrix(flow.db).item_ids.size == 0
     assert list(flow.temp_dir.iterdir()) == []
 
     flow.fake.faults.clear()
-    resumed = flow.queue.resume(reason=PauseReason.NETWORK)
-    assert resumed >= 1
+    assert flow.queue.resume(reason=PauseReason.NETWORK) == 2
     flow.runner.notify()
 
     await wait_until(lambda: _extract_statuses(flow) == ["done", "done"], timeout_s=60)
