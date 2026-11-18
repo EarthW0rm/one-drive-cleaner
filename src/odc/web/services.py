@@ -11,6 +11,7 @@ from odc.auth.errors import AuthStateError, ConfigurationError
 from odc.auth.models import Account, AuthFlow
 from odc.graph.client import GraphClient
 from odc.jobs.supervisor import JobSupervisor
+from odc.quarantine.folders import AppFolders
 from odc.storage.account_db import AccountDatabase
 
 AuthState = Literal["authenticated", "login_required"]
@@ -72,6 +73,7 @@ class AppServices:
     `database` entrega o `Engine` vigente (muda no login/logout). `jobs` liga o processamento em
     segundo plano ao lifespan e à troca de conta (None: sem runner). `graph` é o cliente da
     Microsoft Graph usado pelas rotas (None: rotas que dependem dele respondem 503).
+    `app_folders` garante as pastas da aplicação no OneDrive (None: sem Graph, não garante).
     `session_secret` é aleatório por processo: reiniciar o `odc` invalida as sessões.
     """
 
@@ -79,5 +81,6 @@ class AppServices:
     auth: AuthGateway = field(default_factory=LoginRequiredGateway)
     jobs: JobSupervisor | None = None
     graph: GraphClient | None = None
+    app_folders: AppFolders | None = None
     static_dir: Path = field(default_factory=default_static_dir)
     session_secret: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)

@@ -39,6 +39,7 @@ from odc.jobs.resumer import JobResumer
 from odc.jobs.runner import JobRunner
 from odc.jobs.supervisor import JobSupervisor
 from odc.jobs.types import JobType
+from odc.quarantine.folders import AppFolders
 from odc.scanning.scanner import ScanLastSuccessSource
 from odc.storage.account_db import AccountDatabase
 from odc.storage.migrate import MigrationError
@@ -177,7 +178,16 @@ def bootstrap(  # noqa: PLR0913 - composição: hooks, telemetria, auth e handle
         factories=handler_factories or {},
     )
     _register_observables(telemetry, database)
-    app = create_app(settings, AppServices(database=database, auth=auth, jobs=jobs, graph=graph))
+    app = create_app(
+        settings,
+        AppServices(
+            database=database,
+            auth=auth,
+            jobs=jobs,
+            graph=graph,
+            app_folders=AppFolders(database, graph) if graph is not None else None,
+        ),
+    )
     instrument_all(app, telemetry, httpx_hooks)
     runtime = Runtime(settings=settings, database=database, app=app, telemetry=telemetry)
     try:

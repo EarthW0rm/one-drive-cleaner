@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Fábrica da aplicação FastAPI com injeção explícita de dependências."""
 
+from functools import partial
+
 from fastapi import APIRouter, Depends, FastAPI
 
 from odc.config import AppSettings
+from odc.web.app_folders import ensure_app_folders
 from odc.web.errors import ERROR_RESPONSES, AppError, ErrorCode, register_error_handlers
 from odc.web.lifespan import create_lifespan
 from odc.web.routes.auth import create_auth_router
@@ -51,7 +54,7 @@ def create_app(settings: AppSettings, services: AppServices) -> FastAPI:
         redoc_url=None,
         dependencies=[Depends(require_csrf)],
         responses=ERROR_RESPONSES,
-        lifespan=create_lifespan(services.jobs),
+        lifespan=create_lifespan(services.jobs, partial(ensure_app_folders, services)),
     )
     register_error_handlers(app)
     install_security(app, secret=services.session_secret, port=settings.port)

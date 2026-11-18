@@ -21,6 +21,7 @@ from odc.auth.errors import (
     UnsupportedAccount,
 )
 from odc.storage.migrate import MigrationError
+from odc.web.app_folders import ensure_app_folders
 from odc.web.errors import AppError, ErrorCode
 from odc.web.services import AppServices
 
@@ -102,6 +103,7 @@ def create_auth_router(services: AppServices, port: int) -> APIRouter:
             logger.error("troca de banco falhou", extra={"error_type": type(error).__name__})
             await run_in_threadpool(_logout_best_effort, services)
             return _login_error(LoginError.AUTH_FAILED)
+        await ensure_app_folders(services)
         return RedirectResponse(HOME_PATH, status_code=HTTP_FOUND)
 
     @router.post("/auth/logout", operation_id="auth_logout", status_code=HTTP_NO_CONTENT)

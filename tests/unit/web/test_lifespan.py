@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+import asyncio
 import logging
 from typing import cast
 
@@ -82,3 +83,23 @@ async def test_create_lifespan_e_um_context_manager_assincrono() -> None:
         assert jobs.events == ["start"]
 
     assert jobs.events == ["start", "stop"]
+
+
+@pytest.mark.asyncio
+async def test_on_start_roda_em_segundo_plano_e_e_cancelado_no_encerramento() -> None:
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def on_start() -> None:
+        started.set()
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    async with create_lifespan(None, on_start)(FastAPI()):
+        await asyncio.wait_for(started.wait(), 1)
+        assert not cancelled.is_set()
+
+    assert cancelled.is_set()

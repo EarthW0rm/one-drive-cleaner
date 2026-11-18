@@ -5,8 +5,9 @@ O runner vive no mesmo event loop do FastAPI. No encerramento, os jobs em execu�
 pedido de cancelamento cooperativo e voltam à fila (retomam do checkpoint no próximo início).
 """
 
+import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,25 +19,41 @@ logger = logging.getLogger(__name__)
 type Lifespan = Callable[[FastAPI], AbstractAsyncContextManager[None]]
 
 
-def create_lifespan(jobs: JobSupervisor | None) -> Lifespan:
-    """Lifespan que inicia e encerra `jobs`; sem supervisor, não faz nada."""
+def create_lifespan(
+    jobs: JobSupervisor | None, on_start: Callable[[], Awaitable[None]] | None = None
+) -> Lifespan:
+    """Lifespan que inicia e encerra `jobs` e dispara `on_start` sem bloquear o startup.
+
+    `on_start` (ex.: garantir as pastas do app com conta ativa) roda em segundo plano e deve tratar
+    as próprias falhas; é cancelado no encerramento.
+    """
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        if jobs is None:
-            yield
-            return
+        task: asyncio.Future[None] | None = (
+            asyncio.ensure_future(on_start()) if on_start is not None else None
+        )
         try:
-            await jobs.start()
+            if jobs is not None:
+                await _start(jobs)
+            try:
+                yield
+            finally:
+                if jobs is not None:
+                    await jobs.stop()
+        finally:
+            if task is not None:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+    async def _start(supervisor: JobSupervisor) -> None:
+        try:
+            await supervisor.start()
         except Exception as error:
             # A interface continua disponível; sem runner, os jobs só aguardam na fila.
             logger.error(
                 "processamento em segundo plano não iniciou",
                 extra={"error_type": type(error).__name__},
             )
-        try:
-            yield
-        finally:
-            await jobs.stop()
 
     return lifespan
