@@ -3,6 +3,8 @@ import { Result, Typography } from "antd";
 import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { LoginPage } from "../pages/Login/LoginPage";
+
 import { AppLayout } from "./AppLayout";
 import { MENU_ITEMS } from "./menu";
 
@@ -21,7 +23,7 @@ function Placeholder({ title }: Readonly<{ title: string }>): ReactElement {
 export function AppRoutes(): ReactElement {
   return (
     <Routes>
-      <Route path="/login" element={<Placeholder title="Entrar na conta Microsoft" />} />
+      <Route path="/login" element={<LoginPage />} />
       <Route element={<AppLayout />}>
         <Route index element={<Navigate to={HOME_PATH} replace />} />
         {MENU_ITEMS.map((item) => (

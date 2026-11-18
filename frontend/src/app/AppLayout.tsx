@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { BellOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
-import { Badge, Button, Layout, Menu, Result, Space, Tag, Typography } from "antd";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Alert, Badge, Button, Layout, Menu, Result, Space, Tag, Typography } from "antd";
 import type { ReactElement } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
-import { useSession } from "../api/useSession";
+import { apiFetch } from "../api/client";
+import { LOGIN_PATH, SESSION_KEY, useSession } from "../api/useSession";
 
 import { errorMessage } from "./errors";
 import { MENU_ITEMS } from "./menu";
@@ -16,7 +18,15 @@ export function AppLayout(): ReactElement {
   const session = useSession();
   const { mode, toggle } = useTheme();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { pathname } = useLocation();
+  const logout = useMutation({
+    mutationFn: () => apiFetch<unknown>("/auth/logout", { method: "POST" }),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: SESSION_KEY });
+      void navigate(LOGIN_PATH, { replace: true });
+    },
+  });
   const selected = MENU_ITEMS.filter((item) => pathname.startsWith(item.key)).map(
     (item) => item.key,
   );
@@ -48,6 +58,18 @@ export function AppLayout(): ReactElement {
             </Typography.Text>
             <Button
               type="text"
+              loading={logout.isPending}
+              onClick={() => {
+                logout.mutate();
+              }}
+            >
+              Sair
+            </Button>
+            {logout.isError ? (
+              <Typography.Text type="danger">{errorMessage(logout.error)}</Typography.Text>
+            ) : null}
+            <Button
+              type="text"
               aria-label="Alternar tema"
               icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
               onClick={toggle}
@@ -55,6 +77,19 @@ export function AppLayout(): ReactElement {
           </Space>
         </Header>
         <Content style={{ margin: 24 }}>
+          {session.sessionExpired ? (
+            <Alert
+              type="warning"
+              showIcon
+              title="Sua sessão expirou. Entre novamente para continuar."
+              action={
+                <Button size="small" type="primary" href="/auth/login">
+                  Reconectar
+                </Button>
+              }
+              style={{ marginBottom: 24 }}
+            />
+          ) : null}
           {session.isError ? (
             <Result
               status="error"

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import { http } from "msw";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import type { ReactElement } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import { errorResponse, sessionHandler, TEST_ORIGIN } from "../test/handlers";
+import { errorResponse, session, sessionHandler, TEST_ORIGIN } from "../test/handlers";
 import { server } from "../test/server";
 
 import { createQueryClient } from "./queryClient";
-import { useSession } from "./useSession";
+import { SESSION_KEY, useSession } from "./useSession";
 
 function Probe(): ReactElement {
   const { data } = useSession();
@@ -47,6 +47,37 @@ describe("useSession", () => {
     renderAt("/revisao");
 
     expect(await screen.findByText("/login|login_required")).toBeInTheDocument();
+  });
+
+  it("não redireciona quando a sessão autenticada vira login_required", async () => {
+    let calls = 0;
+    server.use(
+      http.get(`${TEST_ORIGIN}/api/session`, () => {
+        calls += 1;
+        return HttpResponse.json(
+          calls === 1 ? session() : session({ auth_state: "login_required", account: null }),
+        );
+      }),
+    );
+    const client = createQueryClient(0);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/revisao"]}>
+          <Probe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("/revisao|authenticated")).toBeInTheDocument();
+
+    await act(async () => {
+      await client.refetchQueries({ queryKey: SESSION_KEY });
+    });
+
+    expect(await screen.findByText("/revisao|login_required")).toBeInTheDocument();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(screen.getByText("/revisao|login_required")).toBeInTheDocument();
   });
 
   it("redireciona para /login com erro LOGIN_REQUIRED", async () => {
