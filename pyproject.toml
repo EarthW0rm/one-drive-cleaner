@@ -12,11 +12,15 @@ license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20.1",
+    "fastapi>=0.163.2",
+    "itsdangerous>=2.2.0",
     "numpy>=2.5.5",
     "platformdirs>=4.14.7",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
     "sqlalchemy>=2",
+    "starlette>=1.10.0",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]
@@ -32,6 +36,7 @@ module-name = "odc"
 dev = [
     "commitizen>=4.19.3",
     "deptry",
+    "httpx>=0.28.1",
     "import-linter",
     "mypy",
     "pip-audit",
@@ -155,6 +160,11 @@ modules = ["odc.quarantine", "odc.scanning", "odc.cleanup"]
 [tool.deptry]
 known_first_party = ["odc"]
 extend_exclude = ["scripts", "tests"]
+
+[tool.deptry.per_rule_ignores]
+# itsdangerous: exigido em runtime pelo SessionMiddleware do Starlette (cookie assinado).
+# uvicorn: iniciado pelo CLI `odc` (TF-144-05, cli.py fora da análise de imports por ora).
+DEP002 = ["itsdangerous", "uvicorn"]
 
 [tool.vulture]
 paths = ["src", "scripts"]

@@ -2,11 +2,11 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": ["eslint-rules/*.js"],
   "project": ["src/**/*.{ts,tsx}", "eslint-rules/**/*.js"],
+  "ignore": ["src/api/schema.gen.ts"],
   "ignoreDependencies": [
     "@ant-design/icons",
     "@tanstack/react-query",
     "react-router-dom",
-    "@testing-library/user-event",
-    "openapi-typescript"
+    "@testing-library/user-event"
   ]
 }

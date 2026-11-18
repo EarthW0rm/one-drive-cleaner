@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "contract:types": "openapi-typescript src/api/openapi.json -o src/api/schema.gen.ts && node -e \"const fs=require('fs');const f='src/api/schema.gen.ts';fs.writeFileSync(f,'// SPDX-License-Identifier: GPL-3.0-only\\n'+fs.readFileSync(f,'utf8'))\"",
     "lint": "eslint . && prettier --check . && tsc --noEmit && knip",
     "test": "vitest run --coverage",
     "format": "prettier --write ."

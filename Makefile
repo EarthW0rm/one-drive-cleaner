@@ -3,7 +3,7 @@
 # `e2e/` ainda não existe (suíte E2E futura), então `test-e2e` é no-op com aviso até lá.
 
 .PHONY: lint lint-python lint-frontend lint-repo test test-python test-frontend \
-	build-frontend test-integration test-model test-e2e test-all
+	build-frontend contract test-integration test-model test-e2e test-all
 
 FRONTEND_DIR := frontend
 # pytest sem testes coletados retorna 5; só é tolerado nas suítes vazias marcadas.
@@ -24,6 +24,13 @@ lint-frontend:
 build-frontend:
 	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
 	pnpm --dir $(FRONTEND_DIR) run build
+
+# Contrato OpenAPI -> tipos TS (plan 4.1): regenera e falha se divergir do versionado.
+contract:
+	uv run python scripts/export_openapi.py
+	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
+	pnpm --dir $(FRONTEND_DIR) run contract:types
+	git diff --exit-code -- $(FRONTEND_DIR)/src/api/openapi.json $(FRONTEND_DIR)/src/api/schema.gen.ts
 
 lint-repo:
 	uv run python scripts/check_spdx.py
