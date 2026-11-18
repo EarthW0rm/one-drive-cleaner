@@ -28,6 +28,19 @@ Escopos permitidos: `auth`, `graph`, `scan`, `features`, `ml`, `jobs`, `quaranti
 
 Como o squash merge usa o título do pull request como mensagem final, o título também precisa seguir esse formato.
 
+## Instalação dos hooks
+
+Após clonar o repositório, instale os hooks de `pre-commit` (commit e mensagem de commit):
+
+```bash
+uv sync
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
+```
+
+Os hooks bloqueiam segredos (`gitleaks`), bancos locais (`*.db`, `*.sqlite*`), imagens fora de `frontend/src/assets/` e `tests/fixtures/images/`, arquivos maiores que 1 MB, erros de lint e mensagens de commit fora do padrão. O hook `gitleaks` é compilado pelo `pre-commit` na primeira execução e requer Go instalado.
+
+Não use `--no-verify`. Se um hook bloquear o commit, corrija a causa. Tokens de teste devem usar o prefixo `FAKE-`, que está na allowlist de `.gitleaks.toml`.
+
 ## Testes e qualidade
 
 - Todo código de produção novo tem teste unitário correspondente.

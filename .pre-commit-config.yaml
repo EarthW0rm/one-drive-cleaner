@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Hooks locais (plan 11.3 e 11.4). Instalação: `uv run pre-commit install --hook-type pre-commit --hook-type commit-msg`.
+# Revs fixados por versão; o CI (TF-143-05) reexecuta as mesmas verificações.
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        # Bloqueia segredos no conteúdo staged; allowlist em .gitleaks.toml.
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        # pnpm-lock.yaml é gerado e contém múltiplos documentos YAML.
+        exclude: '^frontend/pnpm-lock\.yaml$'
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: end-of-file-fixer
+        # LICENSE é o texto oficial da GPL-3.0; não é reformatado.
+        exclude: '^LICENSE$'
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.5
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.19.3
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  - repo: local
+    hooks:
+      - id: forbid-local-databases
+        name: bloqueia bancos locais (*.db, *.sqlite*)
+        entry: Arquivo de banco local não pode ser versionado (plan 11.3).
+        language: fail
+        files: '(?i)\.(db|sqlite[^/]*)$'
+      - id: forbid-images-outside-assets
+        name: bloqueia imagens fora de assets de teste e front
+        entry: Imagem fora de frontend/src/assets/ ou tests/fixtures/images/ (plan 11.3).
+        language: fail
+        files: '(?i)\.(jpe?g|png|heic|webp|gif)$'
+        exclude: '^(frontend/src/assets/|tests/fixtures/images/)'
+      - id: conventional-commit-scope
+        name: tipo e escopo permitidos (plan 11.4)
+        entry: '\A(feat|fix|perf|docs|refactor|test|build|ci|chore|style|revert)\((auth|graph|scan|features|ml|jobs|quarantine|storage|web|ui|telemetry|ci|release|deps|repo)\)!?: \S'
+        language: pygrep
+        args: [--multiline, --negate]
+        stages: [commit-msg]
+        pass_filenames: true

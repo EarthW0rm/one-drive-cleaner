@@ -23,10 +23,12 @@ module-name = "odc"
 
 [dependency-groups]
 dev = [
+    "commitizen>=4.19.3",
     "deptry",
     "import-linter",
     "mypy",
     "pip-audit",
+    "pre-commit>=4.7.0",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
@@ -152,3 +154,8 @@ exclude = [
     "src/odc/cli.py",
     "src/odc/storage/migrations/versions/*",
 ]
+
+[tool.commitizen]
+# Validação de Conventional Commits no hook commit-msg (plan 11.4). Escopos permitidos
+# são validados pelo hook `conventional-commit-scope` em .pre-commit-config.yaml.
+name = "cz_conventional_commits"
