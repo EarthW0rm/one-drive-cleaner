@@ -7,6 +7,7 @@ import sys
 from collections.abc import Sequence
 
 from odc.bootstrap import EXIT_FAILURE, BootstrapError, bootstrap, run
+from odc.cleanup.handler import CleanupStartupHook
 from odc.config import ConfigError, load_settings
 from odc.jobs.factories import HANDLER_FACTORIES
 from odc.jobs.startup import RequeueOrphansHook
@@ -54,7 +55,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging_handle = configure_logging(settings)
     try:
         runtime = bootstrap(
-            settings, hooks=(RequeueOrphansHook(),), handler_factories=HANDLER_FACTORIES
+            settings,
+            hooks=(CleanupStartupHook(), RequeueOrphansHook()),
+            handler_factories=HANDLER_FACTORIES,
         )
         return run(runtime, open_browser=settings.open_browser)
     except BootstrapError as error:

@@ -8,6 +8,8 @@ devolve `None` fica sem handler e seus jobs aguardam na fila.
 
 from collections.abc import Mapping
 
+from odc.cleanup.handler import CleanupHandler
+from odc.cleanup.service import CleanupService
 from odc.jobs.handler import Handler, HandlerDeps, HandlerFactory
 from odc.jobs.types import JobType
 from odc.scanning.scanner import ScanHandler
@@ -22,7 +24,15 @@ def scan_handler(deps: HandlerDeps) -> Handler | None:
     )
 
 
-HANDLER_FACTORIES: Mapping[JobType, HandlerFactory] = {JobType.SCAN: scan_handler}
+def cleanup_handler(deps: HandlerDeps) -> Handler | None:
+    """`CleanupHandler` sobre os diretórios do aplicativo; não depende da Graph."""
+    return CleanupHandler(CleanupService(deps.database), metrics=deps.metrics)
 
 
-__all__ = ["HANDLER_FACTORIES", "scan_handler"]
+HANDLER_FACTORIES: Mapping[JobType, HandlerFactory] = {
+    JobType.SCAN: scan_handler,
+    JobType.CLEANUP: cleanup_handler,
+}
+
+
+__all__ = ["HANDLER_FACTORIES", "cleanup_handler", "scan_handler"]

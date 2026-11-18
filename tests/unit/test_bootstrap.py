@@ -33,6 +33,7 @@ from odc.bootstrap import (
     bootstrap,
     run,
 )
+from odc.cleanup.handler import DiskUsageSource
 from odc.config import AppSettings
 from odc.graph.client import GraphClient
 from odc.jobs.factories import HANDLER_FACTORIES
@@ -589,7 +590,7 @@ def built_factory(handler: _RecordingScan) -> HandlerFactory:
     return factory
 
 
-def test_fabrica_que_devolve_none_deixa_o_tipo_sem_handler(
+def test_fabrica_sem_graph_deixa_o_scan_sem_handler_e_mantem_a_limpeza(
     home: Path, free_port: int, recording_runner: type[_RecordingRunner]
 ) -> None:
     created = bootstrap(
@@ -598,12 +599,12 @@ def test_fabrica_que_devolve_none_deixa_o_tipo_sem_handler(
         handler_factories=HANDLER_FACTORIES,
     )
     try:
-        assert recording_runner.created[0].handlers == {}
+        assert set(recording_runner.created[0].handlers) == {JobType.CLEANUP}
     finally:
         created.engine.dispose()
 
 
-def test_bootstrap_registra_gauge_da_ultima_varredura(
+def test_bootstrap_registra_os_gauges_de_varredura_e_de_disco(
     home: Path, free_port: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registered: list[tuple[ObservableName, object]] = []
@@ -619,8 +620,12 @@ def test_bootstrap_registra_gauge_da_ultima_varredura(
 
     created = bootstrap(AppSettings(port=free_port, otel_enabled=False))
     try:
-        assert [name for name, _ in registered] == [ObservableName.SCAN_LAST_SUCCESS]
+        assert [name for name, _ in registered] == [
+            ObservableName.SCAN_LAST_SUCCESS,
+            ObservableName.DISK_USAGE,
+        ]
         assert isinstance(registered[0][1], ScanLastSuccessSource)
         assert registered[0][1].collect() == []
+        assert isinstance(registered[1][1], DiskUsageSource)
     finally:
         created.engine.dispose()

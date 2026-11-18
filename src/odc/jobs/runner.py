@@ -20,7 +20,7 @@ import contextlib
 import errno
 import logging
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
@@ -146,6 +146,9 @@ def _positive(value: float, name: str) -> float:
     return value
 
 
+type SettledHook = Callable[[ClaimedJob, Decision], Awaitable[None]]
+
+
 class JobRunner:
     """Executa jobs da fila em dois workers, com heartbeat, retries, pausas e telemetria."""
 
@@ -163,6 +166,7 @@ class JobRunner:
         cancel_timeout_s: float = CANCEL_TIMEOUT_S,
         retry_delays_s: Sequence[float] = RETRY_DELAYS_S,
         monotonic: Callable[[], float] = time.monotonic,
+        on_settled: SettledHook | None = None,
     ) -> None:
         if any(delay < 0 for delay in retry_delays_s):
             raise ValueError("retry_delays_s não aceita valores negativos")
@@ -178,6 +182,7 @@ class JobRunner:
         self._cancel_timeout_s = _positive(cancel_timeout_s, "cancel_timeout_s")
         self._retry_delays_s = tuple(retry_delays_s)
         self._monotonic = monotonic
+        self._on_settled = on_settled
         registered = frozenset(self._handlers)
         lanes = (
             Lane("actions", ACTION_TYPES & registered),
@@ -427,6 +432,22 @@ class JobRunner:
             logger.warning("job sem posse; resultado descartado", extra={"job_id": claimed.id})
             return
         self._report(claimed, decision, span, max(duration_s, 0.0))
+        await self._notify_settled(claimed, decision)
+
+    async def _notify_settled(self, claimed: ClaimedJob, decision: Decision) -> None:
+        """Encadeamentos pós-job (limpeza, retomada); falha aqui nunca afeta o resultado."""
+        if self._on_settled is None:
+            return
+        try:
+            await self._on_settled(claimed, decision)
+        except Exception as error:
+            logger.error(
+                "encadeamento pós-job falhou",
+                extra={
+                    **self._log_fields("job.followup", claimed),
+                    "error_type": type(error).__name__,
+                },
+            )
 
     def _report(
         self, claimed: ClaimedJob, decision: Decision, span: Span, duration_s: float

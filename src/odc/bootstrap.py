@@ -26,10 +26,13 @@ from sqlalchemy import Engine
 from odc.auth.errors import AuthError
 from odc.auth.models import Account
 from odc.auth.service import AuthService
+from odc.cleanup.handler import DiskUsageSource
+from odc.cleanup.service import CleanupService
 from odc.config import AppSettings
 from odc.graph.client import GraphClient
 from odc.graph.http import GRAPH_BASE_URL, GraphHttp
 from odc.graph.limiter import AimdLimiter
+from odc.jobs.followups import JobFollowUps
 from odc.jobs.handler import Handler, HandlerDeps, HandlerFactory
 from odc.jobs.queue import JobQueue
 from odc.jobs.resumer import JobResumer
@@ -198,6 +201,7 @@ def _register_observables(telemetry: TelemetryHandle, database: AccountDatabase)
     """Gauges observáveis lidos do banco vigente (coleta periódica do OTel)."""
     registry = ObservableRegistry(telemetry.meter_provider)
     registry.register(ObservableName.SCAN_LAST_SUCCESS, ScanLastSuccessSource(database))
+    registry.register(ObservableName.DISK_USAGE, DiskUsageSource(CleanupService(database)))
 
 
 def _job_supervisor(  # noqa: PLR0913 - composição do runner com as dependências do bootstrap
@@ -217,8 +221,10 @@ def _job_supervisor(  # noqa: PLR0913 - composição do runner com as dependênc
         job_type: handler for job_type, handler in built.items() if handler is not None
     }
     resolved.update(handlers)
-    runner = JobRunner(queue, resolved, metrics=metrics, tracer=tracer)
+    followups = JobFollowUps(queue, metrics=metrics, cleanup_enabled=JobType.CLEANUP in resolved)
+    runner = JobRunner(queue, resolved, metrics=metrics, tracer=tracer, on_settled=followups)
     resumer = JobResumer(queue, runner.notify, metrics=metrics)
+    followups.bind(resumer)
     return JobSupervisor(database, queue, runner, resumer, metrics=metrics)
 
 

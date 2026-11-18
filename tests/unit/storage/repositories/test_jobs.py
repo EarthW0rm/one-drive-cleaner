@@ -373,3 +373,19 @@ def test_list_jobs_valida_filtros_e_limite(session: Session) -> None:
         jobs.list_jobs(session, limit=0)
     with pytest.raises(StorageValidationError):
         jobs.list_jobs(session, limit=101)
+
+
+def test_has_running_besides_ignora_o_proprio_tipo_e_outros_status(session: Session) -> None:
+    jobs.enqueue(session, job_type="cleanup", payload={"trigger": "job_end"}, now=T1)
+    jobs.enqueue(session, job_type="scan", payload={}, now=T1)
+    assert jobs.has_running_besides(session, "cleanup") is False
+
+    first = jobs.claim_next(session, now=T2, types=["cleanup"])
+    assert first is not None
+    assert jobs.has_running_besides(session, "cleanup") is False
+
+    second = jobs.claim_next(session, now=T2, types=["scan"])
+    assert second is not None
+    assert jobs.has_running_besides(session, "cleanup") is True
+    with pytest.raises(StorageValidationError):
+        jobs.has_running_besides(session, "x")

@@ -2,10 +2,11 @@
 import pytest
 from sqlalchemy import Engine
 
+from odc.cleanup.handler import CleanupHandler
 from odc.graph.client import GraphClient
 from odc.graph.http import GRAPH_BASE_URL, GraphHttp
 from odc.graph.limiter import AimdLimiter
-from odc.jobs.factories import HANDLER_FACTORIES, scan_handler
+from odc.jobs.factories import HANDLER_FACTORIES, cleanup_handler, scan_handler
 from odc.jobs.handler import HandlerDeps
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType
@@ -50,3 +51,11 @@ def test_fabrica_de_scan_monta_o_handler_com_a_graph(
 
 def test_registro_padrao_inclui_a_varredura() -> None:
     assert HANDLER_FACTORIES[JobType.SCAN] is scan_handler
+
+
+def test_fabrica_de_cleanup_nao_exige_a_graph(deps_without_graph: HandlerDeps) -> None:
+    assert isinstance(cleanup_handler(deps_without_graph), CleanupHandler)
+
+
+def test_registro_padrao_inclui_a_limpeza() -> None:
+    assert HANDLER_FACTORIES[JobType.CLEANUP] is cleanup_handler

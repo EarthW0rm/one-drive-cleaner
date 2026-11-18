@@ -161,6 +161,14 @@ def has_active(
     return bool(session.execute(stmt).scalar_one())
 
 
+def has_running_besides(session: Session, job_type: str) -> bool:
+    """Existe job `running` de tipo diferente de `job_type` (trabalho que escreve no banco)."""
+    if job_type not in JOB_TYPES:
+        raise StorageValidationError("tipo de job inválido")
+    stmt = select(exists().where(and_(job.c.status == "running", job.c.type != job_type)))
+    return bool(session.execute(stmt).scalar_one())
+
+
 def list_active_payloads(session: Session, job_type: str) -> Sequence[str]:
     """Payloads (JSON) dos jobs ativos (`queued`/`running`/`paused`) do tipo, em ordem de id."""
     if job_type not in JOB_TYPES:
