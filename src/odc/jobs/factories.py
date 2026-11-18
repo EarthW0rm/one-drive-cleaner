@@ -10,10 +10,18 @@ from collections.abc import Mapping
 
 from odc.cleanup.handler import CleanupHandler
 from odc.cleanup.service import CleanupService
+from odc.features.errors import (
+    EmbedderConfigError,
+    EmbeddingError,
+    TempCapReachedError,
+    WeightsUnavailableError,
+)
+from odc.features.extract_handler import ExtractHandler
+from odc.features.model_registry import ActiveEmbedderProvider
 from odc.graph.client import GraphClient
-from odc.jobs.errors import FatalJobError
+from odc.jobs.errors import FatalJobError, PauseError, RetryableError
 from odc.jobs.handler import Handler, HandlerDeps, HandlerFactory, JobContext
-from odc.jobs.types import JobType
+from odc.jobs.types import JobType, PauseReason
 from odc.quarantine.delete import DeleteHandler, InvalidConfirmationError
 from odc.quarantine.folders import AppFolders
 from odc.quarantine.move import MoveHandler
@@ -110,8 +118,54 @@ def delete_handler(deps: HandlerDeps) -> Handler | None:
     )
 
 
+EMBEDDER_CONFIG = "EMBEDDER_CONFIG"
+WEIGHTS_UNAVAILABLE = "WEIGHTS_UNAVAILABLE"
+EMBEDDING_FAILED = "EMBEDDING_FAILED"
+
+
+class _ExtractJobHandler:
+    """Adapta `ExtractHandler` ao runner, traduzindo os erros de domínio em sinais de job.
+
+    Teto do temporário → pausa `temp_cap`; pesos indisponíveis → nova tentativa; configuração
+    do embedder inválida → falha definitiva; falha de inferência no lote → nova tentativa.
+    """
+
+    def __init__(self, inner: ExtractHandler) -> None:
+        self._inner = inner
+
+    async def run(self, ctx: JobContext) -> None:
+        try:
+            await self._inner.run(ctx)
+        except TempCapReachedError as error:
+            raise PauseError(PauseReason.TEMP_CAP) from error
+        except WeightsUnavailableError as error:
+            raise RetryableError(WEIGHTS_UNAVAILABLE) from error
+        except EmbedderConfigError as error:
+            raise FatalJobError(EMBEDDER_CONFIG) from error
+        except EmbeddingError as error:
+            raise RetryableError(EMBEDDING_FAILED) from error
+
+
+def extract_handler(deps: HandlerDeps) -> Handler | None:
+    """`ExtractHandler` (worker de fundo): exige a Graph; uma instância do embedder por processo."""
+    if deps.graph is None:
+        return None
+    return _ExtractJobHandler(
+        ExtractHandler(
+            deps.database,
+            deps.graph,
+            deps.queue,
+            CleanupService(deps.database),
+            ActiveEmbedderProvider(metrics=deps.metrics),
+            metrics=deps.metrics,
+            tracer=deps.tracer,
+        )
+    )
+
+
 HANDLER_FACTORIES: Mapping[JobType, HandlerFactory] = {
     JobType.SCAN: scan_handler,
+    JobType.EXTRACT: extract_handler,
     JobType.CLEANUP: cleanup_handler,
     JobType.RECONCILE: reconcile_handler,
     JobType.MOVE: move_handler,
@@ -124,6 +178,7 @@ __all__ = [
     "HANDLER_FACTORIES",
     "cleanup_handler",
     "delete_handler",
+    "extract_handler",
     "move_handler",
     "reconcile_handler",
     "restore_handler",

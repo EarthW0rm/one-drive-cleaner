@@ -3,14 +3,23 @@ import pytest
 from sqlalchemy import Engine
 
 from odc.cleanup.handler import CleanupHandler
+from odc.features.errors import (
+    EmbedderConfigError,
+    EmbeddingError,
+    TempCapReachedError,
+    WeightsUnavailableError,
+)
+from odc.features.extract_handler import ExtractHandler
 from odc.graph.client import GraphClient
 from odc.graph.http import GRAPH_BASE_URL, GraphHttp
 from odc.graph.limiter import AimdLimiter
-from odc.jobs.errors import FatalJobError
+from odc.jobs.errors import FatalJobError, PauseError, RetryableError
 from odc.jobs.factories import (
     HANDLER_FACTORIES,
+    _ExtractJobHandler,
     cleanup_handler,
     delete_handler,
+    extract_handler,
     move_handler,
     reconcile_handler,
     restore_handler,
@@ -19,7 +28,7 @@ from odc.jobs.factories import (
 from odc.jobs.handler import HandlerDeps
 from odc.jobs.payloads import DeletePayload
 from odc.jobs.queue import JobQueue
-from odc.jobs.types import JobType
+from odc.jobs.types import JobType, PauseReason
 from odc.quarantine.confirmation import ConfirmationStore
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler
@@ -203,3 +212,75 @@ async def test_confirmacao_invalida_vira_falha_definitiva_sem_nova_tentativa(
         await handler.run(ctx)  # type: ignore[arg-type]
 
     assert raised.value.error_code == "INVALID_CONFIRMATION"
+
+
+def test_fabrica_de_extract_exige_cliente_da_graph(deps_without_graph: HandlerDeps) -> None:
+    assert extract_handler(deps_without_graph) is None
+
+
+def test_fabrica_de_extract_monta_o_handler_com_a_graph(
+    deps_without_graph: HandlerDeps, graph: GraphClient
+) -> None:
+    deps = HandlerDeps(
+        database=deps_without_graph.database,
+        queue=deps_without_graph.queue,
+        graph=graph,
+        metrics=None,
+        tracer=None,
+    )
+
+    handler = extract_handler(deps)
+
+    assert isinstance(handler, _ExtractJobHandler)
+    assert isinstance(handler._inner, ExtractHandler)
+
+
+def test_registro_padrao_inclui_a_extracao() -> None:
+    assert HANDLER_FACTORIES[JobType.EXTRACT] is extract_handler
+
+
+class _Failing:
+    def __init__(self, error: Exception | None) -> None:
+        self._error = error
+
+    async def run(self, ctx: object) -> None:
+        del ctx
+        if self._error is not None:
+            raise self._error
+
+
+@pytest.mark.asyncio
+async def test_extracao_concluida_nao_traduz_nada() -> None:
+    adapter = _ExtractJobHandler(_Failing(None))  # type: ignore[arg-type]
+
+    await adapter.run(FakeContext())  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_teto_do_temporario_vira_pausa_temp_cap() -> None:
+    adapter = _ExtractJobHandler(_Failing(TempCapReachedError()))  # type: ignore[arg-type]
+
+    with pytest.raises(PauseError) as raised:
+        await adapter.run(FakeContext())  # type: ignore[arg-type]
+
+    assert raised.value.reason is PauseReason.TEMP_CAP
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("domain_error", "signal", "code"),
+    [
+        (WeightsUnavailableError("pesos"), RetryableError, "WEIGHTS_UNAVAILABLE"),
+        (EmbeddingError("lote"), RetryableError, "EMBEDDING_FAILED"),
+        (EmbedderConfigError("dim"), FatalJobError, "EMBEDDER_CONFIG"),
+    ],
+)
+async def test_erros_do_embedder_viram_sinais_do_runner(
+    domain_error: Exception, signal: type[Exception], code: str
+) -> None:
+    adapter = _ExtractJobHandler(_Failing(domain_error))  # type: ignore[arg-type]
+
+    with pytest.raises(signal) as raised:
+        await adapter.run(FakeContext())  # type: ignore[arg-type]
+
+    assert raised.value.error_code == code  # type: ignore[attr-defined]

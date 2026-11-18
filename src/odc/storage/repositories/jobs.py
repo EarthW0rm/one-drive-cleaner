@@ -161,6 +161,14 @@ def has_active(
     return bool(session.execute(stmt).scalar_one())
 
 
+def has_active_besides(session: Session, job_type: str, job_id: int) -> bool:
+    """Existe outro job `queued`, `running` ou `paused` do tipo, além de `job_id`."""
+    if job_type not in JOB_TYPES:
+        raise StorageValidationError("tipo de job inválido")
+    stmt = select(exists().where(and_(_active_filter(job_type, None), job.c.id != job_id)))
+    return bool(session.execute(stmt).scalar_one())
+
+
 def has_running_besides(session: Session, job_type: str) -> bool:
     """Existe job `running` de tipo diferente de `job_type` (trabalho que escreve no banco)."""
     if job_type not in JOB_TYPES:

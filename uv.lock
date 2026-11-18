@@ -1194,6 +1194,7 @@ dependencies = [
     { name = "opentelemetry-instrumentation-system-metrics" },
     { name = "opentelemetry-sdk" },
     { name = "pillow" },
+    { name = "pillow-heif" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -1222,7 +1223,6 @@ dev = [
     { name = "vulture" },
 ]
 ml = [
-    { name = "pillow-heif" },
     { name = "scikit-learn" },
 ]
 
@@ -1243,6 +1243,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-system-metrics", specifier = ">=0.66b2" },
     { name = "opentelemetry-sdk", specifier = ">=1.45.2" },
     { name = "pillow", specifier = ">=13.0.0" },
+    { name = "pillow-heif", specifier = ">=1.8.1" },
     { name = "platformdirs", specifier = ">=4.14.7" },
     { name = "pydantic", specifier = ">=2.14.3" },
     { name = "pydantic-settings", specifier = ">=2.16.3" },
@@ -1270,10 +1271,7 @@ dev = [
     { name = "types-pyyaml" },
     { name = "vulture" },
 ]
-ml = [
-    { name = "pillow-heif", specifier = ">=1.8.1" },
-    { name = "scikit-learn", specifier = ">=1.9.1" },
-]
+ml = [{ name = "scikit-learn", specifier = ">=1.9.1" }]
 
 [[package]]
 name = "open-clip-torch"

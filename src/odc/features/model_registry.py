@@ -5,6 +5,7 @@ O `name` do registro compõe `<arquitetura>/<pretrained>` (ex.: `ViT-B-32/laion2
 a tabela não tem coluna de `pretrained`. A dimensão registrada é conferida no carregamento.
 """
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -68,3 +69,37 @@ def resolve_active_embedder(
     if model is None:
         raise EmbedderConfigError("nenhum embedding_model ativo")
     return ActiveEmbedder(model=model, embedder=builder(model, device, metrics))
+
+
+class ActiveEmbedderProvider:
+    """Entrega o `ActiveEmbedder` vigente, reutilizando a instância enquanto o modelo é o mesmo.
+
+    Os pesos são caros: uma instância por processo (vale também após a troca de conta, pois o
+    registro ativo é o mesmo). Um registro ativo diferente (outro id, nome, dimensão ou tamanho
+    de miniatura) recria o embedder. Seguro entre threads.
+    """
+
+    def __init__(
+        self,
+        *,
+        device: str = DEVICE_AUTO,
+        metrics: EmbeddingMetrics | None = None,
+        builder: EmbedderBuilder = build_embedder,
+    ) -> None:
+        self._device = device
+        self._metrics = metrics
+        self._builder = builder
+        self._lock = threading.Lock()
+        self._cached: ActiveEmbedder | None = None
+
+    def get(self, session: Session) -> ActiveEmbedder:
+        """Embedder do modelo ativo; sem modelo ativo, `EmbedderConfigError`."""
+        with self._lock:
+            row = embedding_models.active(session)
+            if row is None:
+                raise EmbedderConfigError("nenhum embedding_model ativo")
+            if self._cached is None or self._cached.model != row:
+                self._cached = ActiveEmbedder(
+                    model=row, embedder=self._builder(row, self._device, self._metrics)
+                )
+            return self._cached

@@ -802,3 +802,23 @@ def test_reconcile_so_e_enfileirado_com_diario_pendente(
     row = queue.get(first.job_id)
     assert row is not None
     assert (row.type, row.priority) == ("reconcile", 200)
+
+
+def test_backlog_de_extracao_so_esvazia_sem_outro_extract_ativo(queue: JobQueue) -> None:
+    first = queue.enqueue(JobType.EXTRACT, EXTRACT)
+    assert queue.extract_backlog_empty(first) is True
+
+    second = queue.enqueue(JobType.EXTRACT, ExtractPayload(item_ids=[3]))
+    assert queue.extract_backlog_empty(first) is False
+    assert queue.extract_backlog_empty(second) is False
+
+    assert queue.complete(queue.claim_next().id) is True  # type: ignore[union-attr]
+    assert queue.extract_backlog_empty(second) is True
+
+
+def test_enfileira_classificacao_de_todo_o_acervo(queue: JobQueue) -> None:
+    job_id = queue.enqueue_classify_all()
+
+    row = queue.get(job_id)
+    assert row is not None
+    assert (row.type, json.loads(row.payload)) == ("classify", {"scope": "all", "item_ids": []})

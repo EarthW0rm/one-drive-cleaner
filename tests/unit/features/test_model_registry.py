@@ -11,6 +11,7 @@ from odc.features.embedder import Embedder, EmbeddingMetrics, OpenClipEmbedder
 from odc.features.errors import EmbedderConfigError
 from odc.features.model_registry import (
     ActiveEmbedder,
+    ActiveEmbedderProvider,
     build_embedder,
     resolve_active_embedder,
     split_model_name,
@@ -89,3 +90,50 @@ def test_resolve_active_embedder_sem_modelo_ativo_levanta_erro_de_configuracao(
 
     with pytest.raises(EmbedderConfigError, match="nenhum embedding_model ativo"):
         resolve_active_embedder(session)
+
+
+class _CountingBuilder:
+    def __init__(self) -> None:
+        self.built: list[tuple[EmbeddingModelRow, str]] = []
+
+    def __call__(
+        self, model: EmbeddingModelRow, device: str, metrics: EmbeddingMetrics | None
+    ) -> Embedder:
+        del metrics
+        self.built.append((model, device))
+        return StubEmbedder()
+
+
+def test_provider_reutiliza_a_instancia_enquanto_o_modelo_e_o_mesmo(session: Session) -> None:
+    builder = _CountingBuilder()
+    provider = ActiveEmbedderProvider(device="cpu", builder=builder)
+
+    first = provider.get(session)
+    second = provider.get(session)
+
+    assert first is second
+    assert builder.built == [(ACTIVE, "cpu")]
+
+
+def test_provider_recria_o_embedder_quando_o_modelo_ativo_muda(session: Session) -> None:
+    builder = _CountingBuilder()
+    provider = ActiveEmbedderProvider(builder=builder)
+    first = provider.get(session)
+    session.connection().exec_driver_sql("UPDATE embedding_model SET is_active = 0")
+    session.connection().exec_driver_sql(
+        "INSERT INTO embedding_model (id, name, dim, thumb_size, is_active)"
+        " VALUES (2, 'ViT-L-14/laion2b', 768, 'large', 1)"
+    )
+
+    second = provider.get(session)
+
+    assert second is not first
+    assert second.model.id == 2
+    assert [model.id for model, _ in builder.built] == [1, 2]
+
+
+def test_provider_sem_modelo_ativo_levanta_erro_de_configuracao(session: Session) -> None:
+    session.connection().exec_driver_sql("UPDATE embedding_model SET is_active = 0")
+
+    with pytest.raises(EmbedderConfigError, match="nenhum embedding_model ativo"):
+        ActiveEmbedderProvider(builder=_CountingBuilder()).get(session)

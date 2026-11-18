@@ -22,3 +22,11 @@ class WeightsUnavailableError(EmbedderError):
 
 class EmbeddingError(EmbedderError):
     """A inferência falhou (inclusive após o fallback para CPU)."""
+
+
+class TempCapReachedError(Exception):
+    """O diretório temporário atingiu o teto (RN-03): a extração pausa até a limpeza.
+
+    Não é um `EmbedderError`: vem da política de disco, não do embedder. O adaptador do job
+    traduz para `PauseError(temp_cap)`.
+    """

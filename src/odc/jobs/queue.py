@@ -247,6 +247,15 @@ class JobQueue:
             for start in range(0, len(unique), MAX_EXTRACT_BATCH)
         ]
 
+    def extract_backlog_empty(self, job_id: int) -> bool:
+        """Nenhum outro job `extract` ativo além de `job_id` (a extração terminou)."""
+        with UnitOfWork(self._database.engine, write=False) as session:
+            return not jobs.has_active_besides(session, JobType.EXTRACT.value, job_id)
+
+    def enqueue_classify_all(self) -> int:
+        """Enfileira `classify(scope=all)`: classifica todo o acervo analisado."""
+        return self.enqueue(JobType.CLASSIFY, ClassifyPayload(scope="all"))
+
     # --- Ações sobre a quarentena (reconciliação do diário) ---
 
     def has_pending_action(self, operation: str, item_id: int) -> bool:

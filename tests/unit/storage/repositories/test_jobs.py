@@ -389,3 +389,20 @@ def test_has_running_besides_ignora_o_proprio_tipo_e_outros_status(session: Sess
     assert jobs.has_running_besides(session, "cleanup") is True
     with pytest.raises(StorageValidationError):
         jobs.has_running_besides(session, "x")
+
+
+def test_has_active_besides_ignora_o_proprio_job_e_status_terminal(session: Session) -> None:
+    mine = jobs.enqueue(session, job_type="extract", payload={"item_ids": [1]}, now=T1)
+    assert jobs.has_active_besides(session, "extract", mine.id) is False
+
+    other = jobs.enqueue(session, job_type="extract", payload={"item_ids": [2]}, now=T1)
+    assert jobs.has_active_besides(session, "extract", mine.id) is True
+
+    jobs.set_status(session, other.id, "paused", now=T2, pause_reason="temp_cap")
+    assert jobs.has_active_besides(session, "extract", mine.id) is True
+
+    jobs.set_status(session, other.id, "done", now=T2)
+    assert jobs.has_active_besides(session, "extract", mine.id) is False
+    assert jobs.has_active_besides(session, "scan", mine.id) is False
+    with pytest.raises(StorageValidationError):
+        jobs.has_active_besides(session, "x", mine.id)

@@ -27,6 +27,7 @@ dependencies = [
     "opentelemetry-sdk>=1.45.2",
     "platformdirs>=4.14.7",
     "pillow>=13.0.0",
+    "pillow-heif>=1.8.1",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.3",
     "sqlalchemy>=2",
@@ -63,10 +64,9 @@ dev = [
     "vulture",
 ]
 # Spike de benchmark (TF-150): `uv sync --group ml`. torch, open-clip-torch e pillow são
-# dependências de runtime (embedder de produção, TF-151-02); o grupo guarda só o que o spike
-# acrescenta.
+# dependências de runtime (embedder de produção, TF-151-02), assim como pillow-heif (decodificação
+# HEIC, TF-151-04); o grupo guarda só o que o spike acrescenta.
 ml = [
-    "pillow-heif>=1.8.1",
     "scikit-learn>=1.9.1",
 ]
 
@@ -196,7 +196,8 @@ extend_exclude = ["scripts", "tests", "spikes"]
 [tool.deptry.per_rule_ignores]
 # itsdangerous: exigido em runtime pelo SessionMiddleware do Starlette (cookie assinado).
 # torch e open-clip-torch: importados por importlib em odc.features.embedder (isolamento de tipos).
-DEP002 = ["itsdangerous", "torch", "open-clip-torch"]
+# pillow-heif: registrado por importlib em odc.features.decode (HEIC opcional no Pillow).
+DEP002 = ["itsdangerous", "torch", "open-clip-torch", "pillow-heif"]
 
 [tool.vulture]
 paths = ["src", "scripts", "spikes"]
