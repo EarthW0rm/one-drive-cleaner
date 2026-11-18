@@ -55,6 +55,18 @@ Substitua `<versão>` e `<arquivo>` pelos valores da release escolhida.
 
 Os comandos de build, teste e lint estão no `Makefile` (a ser criado nas próximas tarefas de implementação). Consulte [CONTRIBUTING.md](CONTRIBUTING.md) para o fluxo de contribuição.
 
+## Monitoramento local
+
+Opcional. Uma stack local (`grafana/otel-lgtm`: collector OTLP, Tempo, Loki, Prometheus e Grafana) recebe traces, métricas e logs da aplicação e traz os dashboards "Operação" e "Modelo" e 6 alertas provisionados. Requer Docker. As portas ficam publicadas somente em `127.0.0.1`, e nenhum dado sai da máquina.
+
+```bash
+make obs-up      # sobe a stack (Grafana em http://127.0.0.1:3000, OTLP em 127.0.0.1:4317)
+odc              # a aplicação exporta para 127.0.0.1:4317 por padrão
+make obs-down    # derruba a stack (os dados ficam no volume odc-lgtm-data)
+```
+
+Sem a stack, a aplicação funciona normalmente e a tela Métricas continua disponível. Para apagar também os dados: `docker compose -f deploy/observability/docker-compose.yml down -v`. O alerta "Temporário no limite" assume o teto padrão de 2 GiB; ajuste o limiar em `deploy/observability/grafana/provisioning/alerting/odc-alerts.yaml` se alterar o teto nas configurações.
+
 ## Segurança
 
 Para reportar vulnerabilidades, siga o procedimento em [SECURITY.md](SECURITY.md). Não abra issues públicas para esse tipo de problema.

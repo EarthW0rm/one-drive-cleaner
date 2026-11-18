@@ -1,0 +1,26 @@
+# Stack local opcional de monitoramento (plan 5.3.5): collector OTLP, Tempo, Loki, Prometheus e Grafana.
+# Portas publicadas somente em loopback: nada fica acessível na rede (RN-24).
+name: odc-observability
+
+services:
+  lgtm:
+    image: grafana/otel-lgtm:0.41.0
+    container_name: odc-otel-lgtm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4317:4317" # OTLP gRPC (o app exporta para cá)
+      - "127.0.0.1:4318:4318" # OTLP HTTP
+      - "127.0.0.1:3000:3000" # Grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - odc-lgtm-data:/data
+      - ./grafana/dashboards:/otel-lgtm/odc-dashboards:ro
+      - ./grafana/provisioning/dashboards/odc-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/odc-dashboards.yaml:ro
+      - ./grafana/provisioning/alerting/odc-alerts.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/odc-alerts.yaml:ro
+
+volumes:
+  odc-lgtm-data:

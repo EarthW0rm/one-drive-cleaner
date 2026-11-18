@@ -3,7 +3,7 @@
 # `e2e/` ainda não existe (suíte E2E futura), então `test-e2e` é no-op com aviso até lá.
 
 .PHONY: lint lint-python lint-frontend lint-repo test test-python test-frontend \
-	build-frontend contract test-integration test-model test-e2e test-all
+	build-frontend contract test-integration test-model test-e2e test-all obs-up obs-down
 
 FRONTEND_DIR := frontend
 # pytest sem testes coletados retorna 5; só é tolerado nas suítes vazias marcadas.
@@ -59,3 +59,12 @@ test-e2e:
 	else echo "AVISO: e2e/ inexistente; test-e2e ignorado (suíte E2E ainda não criada)"; fi
 
 test-all: lint test test-integration test-model test-e2e
+
+# Stack local opcional de monitoramento (Grafana em http://127.0.0.1:3000; OTLP em 127.0.0.1:4317).
+OBS_COMPOSE := docker compose -f deploy/observability/docker-compose.yml
+
+obs-up:
+	$(OBS_COMPOSE) up -d --wait
+
+obs-down:
+	$(OBS_COMPOSE) down
