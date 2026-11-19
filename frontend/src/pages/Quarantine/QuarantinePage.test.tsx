@@ -46,6 +46,15 @@ async function loaded(): Promise<void> {
   await screen.findByAltText("Miniatura do item 1");
 }
 
+/**
+ * Espera a página carregar de fato: a miniatura do primeiro item só aparece depois do fetch da
+ * lista. O rótulo "Página N" muda antes (estado local) e, durante o carregamento, a tabela fica
+ * com `pointer-events: none` e "Próxima" desabilitada — esperar só pelo rótulo gera corrida.
+ */
+async function pageLoaded(firstItemId: number): Promise<void> {
+  await screen.findByAltText(`Miniatura do item ${String(firstItemId)}`);
+}
+
 function selectAllBox(): HTMLElement {
   const [box] = screen.getAllByRole("checkbox");
   if (box === undefined) {
@@ -156,20 +165,21 @@ describe("QuarantinePage: listagem", () => {
 
   it("pagina por cursor e volta à página anterior", async () => {
     const api = setup({ items: items(60) });
-    await screen.findByText("Página 1");
+    await pageLoaded(60);
+    expect(screen.getByText("Página 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Anterior" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Próxima" }));
 
-    expect(await screen.findByText("Página 2")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(api.listQueries.at(-1)?.get("cursor")).toBe("11");
-    });
+    await pageLoaded(10);
+    expect(screen.getByText("Página 2")).toBeInTheDocument();
+    expect(api.listQueries.at(-1)?.get("cursor")).toBe("11");
     expect(screen.getByRole("button", { name: "Próxima" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Anterior" }));
 
-    expect(await screen.findByText("Página 1")).toBeInTheDocument();
+    await pageLoaded(60);
+    expect(screen.getByText("Página 1")).toBeInTheDocument();
   });
 
   it("atualiza a lista pelo botão", async () => {
@@ -313,17 +323,19 @@ describe("QuarantinePage: restaurar", () => {
   });
 
   it("limita a restauração a 500 itens por vez", async () => {
-    setup({ items: items(501) });
-    await screen.findByText("Página 1");
+    const total = 501;
+    const pageSize = 50;
+    setup({ items: items(total) });
+    await pageLoaded(total);
 
-    for (let page = 0; page < 11; page += 1) {
+    // A lista é decrescente por id: a página `p` começa em `total - p * pageSize`.
+    for (let page = 0; page * pageSize < total; page += 1) {
+      await pageLoaded(total - page * pageSize);
       await userEvent.click(selectAllBox());
-      const next = screen.getByRole("button", { name: "Próxima" });
-      if (next.hasAttribute("disabled")) {
+      if (screen.getByRole("button", { name: "Próxima" }).hasAttribute("disabled")) {
         break;
       }
-      await userEvent.click(next);
-      await screen.findByText(`Página ${String(page + 2)}`);
+      await userEvent.click(screen.getByRole("button", { name: "Próxima" }));
     }
 
     expect(screen.getByText("501 selecionados")).toBeInTheDocument();
