@@ -3,6 +3,7 @@ import { Result, Typography } from "antd";
 import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { CategoriesPage } from "../pages/Categories/CategoriesPage";
 import { LoginPage } from "../pages/Login/LoginPage";
 import { OnboardingPage } from "../pages/Onboarding/OnboardingPage";
 import { ReviewPage } from "../pages/Review/ReviewPage";
@@ -13,7 +14,7 @@ import { AppLayout, ONBOARDING_PATH } from "./AppLayout";
 import { MENU_ITEMS } from "./menu";
 
 const HOME_PATH = "/revisao";
-const ROUTED_KEYS = new Set<string>(["/revisao", "/varreduras", "/configuracoes"]);
+const ROUTED_KEYS = new Set<string>(["/revisao", "/categorias", "/varreduras", "/configuracoes"]);
 
 function Placeholder({ title }: Readonly<{ title: string }>): ReactElement {
   return (
@@ -33,6 +34,7 @@ export function AppRoutes(): ReactElement {
         <Route index element={<Navigate to={HOME_PATH} replace />} />
         <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
         <Route path="/revisao" element={<ReviewPage />} />
+        <Route path="/categorias" element={<CategoriesPage />} />
         <Route path="/varreduras" element={<ScansPage />} />
         <Route path="/configuracoes" element={<SettingsPage />} />
         {MENU_ITEMS.filter((item) => !ROUTED_KEYS.has(item.key)).map((item) => (

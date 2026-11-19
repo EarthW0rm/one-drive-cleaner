@@ -13,6 +13,7 @@ export const CATEGORIES: readonly CategoryModel[] = [
   {
     id: 1,
     slug: "real_photo",
+    description: "Fotos pessoais: nunca vão para a quarentena",
     name: "Foto real",
     removable: false,
     protected: true,
@@ -22,6 +23,7 @@ export const CATEGORIES: readonly CategoryModel[] = [
   {
     id: 2,
     slug: "screenshot",
+    description: "Capturas de tela",
     name: "Print de tela",
     removable: true,
     protected: false,
@@ -31,6 +33,7 @@ export const CATEGORIES: readonly CategoryModel[] = [
   {
     id: 3,
     slug: "meme_sticker",
+    description: "Memes e figurinhas",
     name: "Meme",
     removable: true,
     protected: false,
@@ -40,6 +43,7 @@ export const CATEGORIES: readonly CategoryModel[] = [
   {
     id: 4,
     slug: "old_doc",
+    description: "Documentos digitalizados antigos",
     name: "Documento antigo",
     removable: true,
     protected: false,

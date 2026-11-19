@@ -50,4 +50,18 @@ describe("AppRoutes", () => {
 
     expect(await screen.findByLabelText(/^Item 1:/)).toBeInTheDocument();
   });
+
+  it("renderiza a tela de Categorias em /categorias", async () => {
+    server.use(sessionHandler(), ...onboardedHandlers(), ...reviewApiHandlers().handlers);
+    render(
+      <QueryClientProvider client={createQueryClient(0)}>
+        <MemoryRouter initialEntries={["/categorias"]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Categorias" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Editar Meme" })).toBeInTheDocument();
+  });
 });
