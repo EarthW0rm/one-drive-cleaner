@@ -79,6 +79,10 @@ class GraphClient:
         self._http = http
         self._temp_root = temp_root
 
+    async def aclose(self) -> None:
+        """Fecha o cliente HTTP subjacente (encerramento do app)."""
+        await self._http.aclose()
+
     # --- Leituras ---
 
     async def get_drive(self) -> Drive:

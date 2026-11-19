@@ -7,6 +7,7 @@ Nome, unidade e chaves de atributo conferem com a tabela canônica; as métricas
 
 import pytest
 
+from odc.telemetry.observables import ObservableName
 from tests.telemetry.journey import TelemetryDump
 from tests.unit.telemetry.test_metrics_catalog import EXPECTED
 
@@ -132,6 +133,15 @@ def test_a_jornada_emitiu_metricas_do_catalogo_de_cada_area(dump: TelemetryDump)
     ):
         assert any(name.startswith(prefix) for name in emitted), f"nenhuma métrica {prefix}"
     assert len(emitted) >= 25
+
+
+# `odc.scan.last_success` fica de fora: a jornada termina com logout (banco local, sem raízes) e a
+# fonte só emite quando há varredura concluída; os demais gauges emitem zeros sem dados.
+def test_a_jornada_emitiu_os_gauges_observaveis_do_catalogo(dump: TelemetryDump) -> None:
+    observables = {name.value for name in ObservableName} - {"odc.scan.last_success"}
+
+    assert len(observables) == 8
+    assert observables <= dump.metric_names
 
 
 def test_unidades_das_metricas_conferem_com_o_catalogo(dump: TelemetryDump) -> None:

@@ -565,3 +565,13 @@ class TestDelete:
 
         with pytest.raises(GraphPreconditionFailed):
             await client.delete("FAKE-1", "FAKE-old")
+
+
+@pytest.mark.asyncio
+async def test_aclose_fecha_o_cliente_http_subjacente() -> None:
+    http = GraphHttp(GRAPH_BASE_URL, _Tokens(), AimdLimiter(), sleep=_no_sleep)
+    graph = GraphClient(http)
+
+    await graph.aclose()
+
+    assert http._client.is_closed

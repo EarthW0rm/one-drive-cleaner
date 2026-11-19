@@ -103,3 +103,31 @@ async def test_on_start_roda_em_segundo_plano_e_e_cancelado_no_encerramento() ->
         assert not cancelled.is_set()
 
     assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_on_stop_roda_depois_do_runner_parar() -> None:
+    jobs = FakeJobs()
+
+    async def on_stop() -> None:
+        jobs.events.append("closed")
+
+    async with create_lifespan(cast("JobSupervisor", jobs), on_stop=on_stop)(FastAPI()):
+        assert jobs.events == ["start"]
+
+    assert jobs.events == ["start", "stop", "closed"]
+
+
+@pytest.mark.asyncio
+async def test_falha_em_on_stop_e_registrada_sem_quebrar_o_encerramento(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def on_stop() -> None:
+        raise RuntimeError("falhou")
+
+    async with create_lifespan(None, on_stop=on_stop)(FastAPI()):
+        pass
+
+    assert [r.message for r in caplog.records if r.name == "odc.web.lifespan"] == [
+        "encerramento de recurso falhou"
+    ]

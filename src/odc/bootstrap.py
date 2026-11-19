@@ -40,6 +40,14 @@ from odc.jobs.resumer import JobResumer
 from odc.jobs.runner import JobRunner
 from odc.jobs.supervisor import JobSupervisor
 from odc.jobs.types import JobType
+from odc.metrics_summary.observables import (
+    ItemsByStateSource,
+    ModelLabelsSource,
+    PipelineBacklogSource,
+    QuarantineBytesSource,
+    QuarantineItemsSource,
+    ReviewQueueSource,
+)
 from odc.quarantine.confirmation import ConfirmationStore
 from odc.quarantine.folders import AppFolders
 from odc.quarantine.journal import JournalPendingSource
@@ -220,6 +228,12 @@ def _register_observables(telemetry: TelemetryHandle, database: AccountDatabase)
     registry.register(ObservableName.SCAN_LAST_SUCCESS, ScanLastSuccessSource(database))
     registry.register(ObservableName.DISK_USAGE, DiskUsageSource(CleanupService(database)))
     registry.register(ObservableName.JOURNAL_PENDING, JournalPendingSource(database))
+    registry.register(ObservableName.ITEMS_BY_STATE, ItemsByStateSource(database))
+    registry.register(ObservableName.PIPELINE_BACKLOG, PipelineBacklogSource(database))
+    registry.register(ObservableName.REVIEW_QUEUE, ReviewQueueSource(database))
+    registry.register(ObservableName.MODEL_LABELS, ModelLabelsSource(database))
+    registry.register(ObservableName.QUARANTINE_ITEMS, QuarantineItemsSource(database))
+    registry.register(ObservableName.QUARANTINE_BYTES, QuarantineBytesSource(database))
 
 
 def _job_supervisor(  # noqa: PLR0913 - composição do runner com as dependências do bootstrap

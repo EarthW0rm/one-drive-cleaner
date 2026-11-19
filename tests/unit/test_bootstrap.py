@@ -632,6 +632,12 @@ def test_bootstrap_registra_os_gauges_de_varredura_disco_e_diario(
             ObservableName.SCAN_LAST_SUCCESS,
             ObservableName.DISK_USAGE,
             ObservableName.JOURNAL_PENDING,
+            ObservableName.ITEMS_BY_STATE,
+            ObservableName.PIPELINE_BACKLOG,
+            ObservableName.REVIEW_QUEUE,
+            ObservableName.MODEL_LABELS,
+            ObservableName.QUARANTINE_ITEMS,
+            ObservableName.QUARANTINE_BYTES,
         ]
         assert isinstance(registered[0][1], ScanLastSuccessSource)
         assert registered[0][1].collect() == []

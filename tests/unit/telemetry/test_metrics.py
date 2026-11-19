@@ -146,7 +146,7 @@ def test_model_and_predictions(met: Metrics, reader: InMemoryMetricReader) -> No
     met.set_model_evaluation(category=CAT, role=m.ModelRole.CANDIDATE, precision=0.9, recall=0.8)
     met.set_removable_precision(role=m.ModelRole.CURRENT, value=0.99)
     met.set_auto_mode_eligible(eligible=True)
-    met.record_prediction(category=CAT, strategy=m.Strategy.LOGREG, confidence=0.7)
+    met.record_predictions(category=CAT, strategy=m.Strategy.LOGREG, confidences=[0.7])
     met.record_review_decision(
         outcome=m.ReviewOutcome.CORRECTED,
         predicted_category=CAT,
@@ -189,7 +189,7 @@ def test_record_predictions_em_lote(met: Metrics, reader: InMemoryMetricReader) 
 @pytest.mark.parametrize("bad", [-0.1, 1.1, float("nan")])
 def test_ratios_validated(met: Metrics, bad: float) -> None:
     with pytest.raises(ValueError, match="confidence"):
-        met.record_prediction(category=CAT, strategy=m.Strategy.ZERO_SHOT, confidence=bad)
+        met.record_predictions(category=CAT, strategy=m.Strategy.ZERO_SHOT, confidences=[bad])
 
 
 def test_quarantine_journal_and_disk(met: Metrics, reader: InMemoryMetricReader) -> None:

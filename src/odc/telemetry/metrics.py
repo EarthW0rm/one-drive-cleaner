@@ -511,14 +511,6 @@ class Metrics:
     def set_auto_mode_eligible(self, *, eligible: bool) -> None:
         self.model_auto_mode_eligible.set(1 if eligible else 0)
 
-    def record_prediction(
-        self, *, category: CategoryKey, strategy: Strategy, confidence: float
-    ) -> None:
-        self.predictions.add(1, {"category": _label(category), "strategy": _label(strategy)})
-        self.prediction_confidence.record(
-            _require_unit_interval(confidence, "confidence"), {"category": _label(category)}
-        )
-
     def record_predictions(
         self, *, category: CategoryKey, strategy: Strategy, confidences: Sequence[float]
     ) -> None:

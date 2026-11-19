@@ -61,7 +61,11 @@ def create_app(settings: AppSettings, services: AppServices) -> FastAPI:
         redoc_url=None,
         dependencies=[Depends(require_csrf)],
         responses=ERROR_RESPONSES,
-        lifespan=create_lifespan(services.jobs, partial(ensure_app_folders, services)),
+        lifespan=create_lifespan(
+            services.jobs,
+            partial(ensure_app_folders, services),
+            services.graph.aclose if services.graph is not None else None,
+        ),
     )
     register_error_handlers(app)
     install_security(app, secret=services.session_secret, port=settings.port)

@@ -20,12 +20,16 @@ type Lifespan = Callable[[FastAPI], AbstractAsyncContextManager[None]]
 
 
 def create_lifespan(
-    jobs: JobSupervisor | None, on_start: Callable[[], Awaitable[None]] | None = None
+    jobs: JobSupervisor | None,
+    on_start: Callable[[], Awaitable[None]] | None = None,
+    on_stop: Callable[[], Awaitable[None]] | None = None,
 ) -> Lifespan:
     """Lifespan que inicia e encerra `jobs` e dispara `on_start` sem bloquear o startup.
 
     `on_start` (ex.: garantir as pastas do app com conta ativa) roda em segundo plano e deve tratar
-    as próprias falhas; é cancelado no encerramento.
+    as próprias falhas; é cancelado no encerramento. `on_stop` (ex.: fechar o cliente HTTP da
+    Graph) roda por último, depois do runner parar; sua falha é registrada e não impede o
+    encerramento.
     """
 
     @asynccontextmanager
@@ -45,6 +49,16 @@ def create_lifespan(
             if task is not None:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
+            if on_stop is not None:
+                await _stop(on_stop)
+
+    async def _stop(callback: Callable[[], Awaitable[None]]) -> None:
+        try:
+            await callback()
+        except Exception as error:
+            logger.error(
+                "encerramento de recurso falhou", extra={"error_type": type(error).__name__}
+            )
 
     async def _start(supervisor: JobSupervisor) -> None:
         try:
