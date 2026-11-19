@@ -8,6 +8,7 @@ chega a uma métrica. Os gauges observáveis vivem em `odc.telemetry.observables
 
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
@@ -517,6 +518,20 @@ class Metrics:
         self.prediction_confidence.record(
             _require_unit_interval(confidence, "confidence"), {"category": _label(category)}
         )
+
+    def record_predictions(
+        self, *, category: CategoryKey, strategy: Strategy, confidences: Sequence[float]
+    ) -> None:
+        """Lote de predições da mesma categoria e estratégia (uma soma, um ponto por confiança)."""
+        if not confidences:
+            return
+        checked = [_require_unit_interval(value, "confidence") for value in confidences]
+        self.predictions.add(
+            len(checked), {"category": _label(category), "strategy": _label(strategy)}
+        )
+        attrs: Attrs = {"category": _label(category)}
+        for value in checked:
+            self.prediction_confidence.record(value, attrs)
 
     def record_review_decision(
         self,

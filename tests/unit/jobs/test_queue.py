@@ -13,6 +13,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from sqlalchemy import Engine
 
 from odc.jobs.payloads import (
+    AutoActionsPayload,
     DeletePayload,
     ExtractPayload,
     MovePayload,
@@ -822,3 +823,19 @@ def test_enfileira_classificacao_de_todo_o_acervo(queue: JobQueue) -> None:
     row = queue.get(job_id)
     assert row is not None
     assert (row.type, json.loads(row.payload)) == ("classify", {"scope": "all", "item_ids": []})
+
+
+def test_enqueue_train_e_deduplicado(queue: JobQueue) -> None:
+    first = queue.enqueue_train("threshold")
+    second = queue.enqueue_train("manual")
+
+    assert first.created is True
+    assert second.created is False
+    assert second.job_id == first.job_id
+
+
+def test_enqueue_auto_actions(queue: JobQueue) -> None:
+    job_id = queue.enqueue_auto_actions(7)
+
+    assert queue.active_payloads(JobType.AUTO_ACTIONS) == [AutoActionsPayload(model_version_id=7)]
+    assert job_id > 0

@@ -281,3 +281,21 @@ def test_requeue_failed_so_mexe_em_itens_com_falha(
     assert untouched is not None
     assert untouched.state == "ANALISADO"
     assert items.requeue_failed(session, [], now=LATER) == []
+
+
+def test_states_of_e_set_state_many(session: Session, make_item: ItemFactory) -> None:
+    ids = [make_item("ANALISADO").id for _ in range(3)]
+
+    assert items.states_of(session, [*ids, 9999]) == dict.fromkeys(ids, "ANALISADO")
+    assert items.set_state_many(session, ids[:2], "SUGERIDO", now=LATER) == 2
+    assert items.states_of(session, ids) == {
+        ids[0]: "SUGERIDO",
+        ids[1]: "SUGERIDO",
+        ids[2]: "ANALISADO",
+    }
+    assert items.set_state_many(session, [], "SUGERIDO", now=LATER) == 0
+
+
+def test_set_state_many_valida_estado(session: Session) -> None:
+    with pytest.raises(StorageValidationError):
+        items.set_state_many(session, [1], "INEXISTENTE", now=LATER)

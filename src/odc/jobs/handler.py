@@ -17,6 +17,7 @@ from typing import Protocol
 from opentelemetry.trace import Tracer
 from pydantic import BaseModel
 
+from odc.features.model_registry import ActiveEmbedderProvider
 from odc.graph.client import GraphClient
 from odc.jobs.errors import INVALID_PAYLOAD, FatalJobError, JobInterrupted
 from odc.jobs.payloads import Payload
@@ -102,7 +103,9 @@ class HandlerDeps:
     `graph` é `None` quando não há cliente da Graph (gateway de autenticação sem token, testes):
     a fábrica de um handler que depende dela devolve `None` e o tipo fica sem handler.
     `confirmations` é o armazém de confirmações de exclusão compartilhado com a rota de
-    confirmação (RN-20); sem ele o job `delete` não tem handler.
+    confirmação (RN-20); sem ele o job `delete` não tem handler. `embedders` é o provedor
+    do embedder compartilhado por `extract`, `classify` e `train` (uma instância por processo);
+    ausente, cada fábrica cria o seu.
     """
 
     database: EngineSource
@@ -111,6 +114,7 @@ class HandlerDeps:
     metrics: Metrics | None
     tracer: Tracer | None
     confirmations: ConfirmationStore | None = None
+    embedders: ActiveEmbedderProvider | None = None
 
 
 type HandlerFactory = Callable[[HandlerDeps], Handler | None]

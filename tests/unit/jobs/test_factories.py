@@ -29,6 +29,7 @@ from odc.jobs.handler import HandlerDeps
 from odc.jobs.payloads import DeletePayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType, PauseReason
+from odc.ml.errors import InvalidModelError, ModelMismatchError
 from odc.quarantine.confirmation import ConfirmationStore
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler
@@ -284,3 +285,58 @@ async def test_erros_do_embedder_viram_sinais_do_runner(
         await adapter.run(FakeContext())  # type: ignore[arg-type]
 
     assert raised.value.error_code == code  # type: ignore[attr-defined]
+
+
+def test_fabricas_de_classify_e_train_nao_exigem_graph(deps_without_graph: HandlerDeps) -> None:
+    from odc.jobs.factories import _MlJobHandler, classify_handler, train_handler  # noqa: PLC0415
+
+    assert isinstance(classify_handler(deps_without_graph), _MlJobHandler)
+    assert isinstance(train_handler(deps_without_graph), _MlJobHandler)
+    assert HANDLER_FACTORIES[JobType.CLASSIFY] is classify_handler
+    assert HANDLER_FACTORIES[JobType.TRAIN] is train_handler
+
+
+def test_fabricas_compartilham_o_provedor_de_embedder(
+    deps_without_graph: HandlerDeps, graph: GraphClient
+) -> None:
+    from odc.features.model_registry import ActiveEmbedderProvider  # noqa: PLC0415
+    from odc.jobs.factories import _embedders  # noqa: PLC0415
+
+    assert isinstance(_embedders(deps_without_graph), ActiveEmbedderProvider)
+    shared = ActiveEmbedderProvider()
+    deps = HandlerDeps(
+        database=deps_without_graph.database,
+        queue=deps_without_graph.queue,
+        graph=graph,
+        metrics=None,
+        tracer=None,
+        embedders=shared,
+    )
+    assert _embedders(deps) is shared
+    extract = extract_handler(deps)
+    assert isinstance(extract, _ExtractJobHandler)
+    assert extract._inner._embedders is shared
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raised", "code", "kind"),
+    [
+        (ModelMismatchError("x"), "MODEL_MISMATCH", FatalJobError),
+        (InvalidModelError("x"), "INVALID_MODEL", FatalJobError),
+        (WeightsUnavailableError(), "WEIGHTS_UNAVAILABLE", RetryableError),
+        (EmbedderConfigError(), "EMBEDDER_CONFIG", FatalJobError),
+        (EmbeddingError(), "EMBEDDING_FAILED", RetryableError),
+    ],
+)
+async def test_adaptador_de_ml_traduz_erros(
+    raised: Exception, code: str, kind: type[Exception]
+) -> None:
+    from odc.jobs.factories import _MlJobHandler  # noqa: PLC0415
+
+    handler = _MlJobHandler(_Failing(raised))
+
+    with pytest.raises(kind) as caught:
+        await handler.run(FakeContext())  # type: ignore[arg-type]
+
+    assert caught.value.error_code == code  # type: ignore[attr-defined]

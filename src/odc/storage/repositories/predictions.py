@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from sqlalchemy import Column, ColumnElement, and_, delete, or_, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from odc.storage.cursor import Cursor, decode_cursor, encode_cursor
@@ -50,6 +51,35 @@ def replace_all(
         ],
     )
     return len(rows)
+
+
+def replace_for_items(
+    session: Session, model_version_id: int, rows: Sequence[PredictionInput], *, now: str
+) -> int:
+    """Grava (substitui) a predição vigente de cada item de `rows`; os demais não são tocados.
+
+    Base da reclassificação em blocos: cada bloco troca só as predições dos seus itens, então o
+    job pode ser retomado ou repetido sem duplicar nem apagar o que outro bloco gravou.
+    """
+    if not rows:
+        return 0
+    stmt = sqlite_insert(prediction)
+    payload = [
+        {
+            "item_id": r.item_id,
+            "model_version_id": model_version_id,
+            "category_id": r.category_id,
+            "confidence": r.confidence,
+            "margin": r.margin,
+            "predicted_at": now,
+        }
+        for r in rows
+    ]
+    update_cols = {name: stmt.excluded[name] for name in payload[0] if name != "item_id"}
+    session.execute(
+        stmt.on_conflict_do_update(index_elements=["item_id"], set_=update_cols), payload
+    )
+    return len(payload)
 
 
 def review_page(

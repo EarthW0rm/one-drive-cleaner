@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Serviço de configurações: validação da alteração, gravação e efeitos colaterais.
 
-Alterar modo ou limiar enfileira `auto_actions` com o modelo vigente (RN-12/RN-14). Alterar
+Alterar modo ou limiar enfileira `auto_actions` com o modelo vigente (RN-12/RN-14). Alterar o
+limiar de confiança também enfileira `train(manual)` (deduplicado): o gate Evolutivo exige
+métricas medidas no limiar vigente (RN-15), então o vigente precisa ser reavaliado. Alterar
 `otel_*` só vale no próximo início: a resposta sinaliza `restart_required`. Campos de gate
 (`gate_*`) não existem no esquema da API: são metas fixas da spec.
 """
@@ -65,6 +67,7 @@ class SettingsView:
 class SettingsUpdate:
     view: SettingsView
     auto_actions_job_id: int | None
+    train_job_id: int | None = None
 
 
 def _view(values: Mapping[str, SettingValue], *, restart_required: bool) -> SettingsView:
@@ -107,7 +110,12 @@ class SettingsService:
             job_id = JobQueue(self._database).enqueue(
                 JobType.AUTO_ACTIONS, AutoActionsPayload(model_version_id=model.id)
             )
+        train_job_id: int | None = None
+        if model is not None and before["auto_threshold"] != after["auto_threshold"]:
+            enqueued = JobQueue(self._database).enqueue_train("manual")
+            train_job_id = enqueued.job_id if enqueued.created else None
         return SettingsUpdate(
             view=_view(after, restart_required=restart_required),
             auto_actions_job_id=job_id,
+            train_job_id=train_job_id,
         )

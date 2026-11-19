@@ -2,7 +2,9 @@
 """Rota de configurações: `GET|PUT /api/settings` (plan 4.1).
 
 A alteração é validada na borda por `SettingsPatch` (`extra="forbid"`, sem `null`); os campos de
-gate não existem no contrato. Mudança de modo ou limiar acorda o runner para `auto_actions`.
+gate não existem no contrato. Mudança de modo ou limiar acorda o runner para `auto_actions`;
+mudança de limiar também enfileira `train(manual)` para reavaliar o vigente e reabrir o gate
+(RN-15).
 """
 
 from typing import Literal
@@ -62,7 +64,8 @@ def create_settings_router(services: AppServices) -> APIRouter:
     )
     def update_settings(body: SettingsPatch) -> SettingsResponse:
         result = SettingsService(services.database).update(body)
-        if result.auto_actions_job_id is not None and services.jobs is not None:
+        queued = result.auto_actions_job_id is not None or result.train_job_id is not None
+        if queued and services.jobs is not None:
             services.jobs.notify()
         return _response(result.view)
 

@@ -227,3 +227,32 @@ def test_meta_versions_vazio_e_em_blocos(
 
     assert features.meta_versions(session, model_id, []) == {}
     assert features.meta_versions(session, model_id, [item_id] * 1200) == {item_id: 1}
+
+
+def test_classifiable_ids_filtra_estado_modelo_versao_e_cursor(
+    session: Session, make_item: ItemFactory, model_id: int
+) -> None:
+    analyzed = [make_item("ANALISADO").id for _ in range(3)]
+    quarantined = make_item("QUARENTENA").id
+    discovered = make_item("DESCOBERTO").id
+    features.save_batch(
+        session, [_input(i, model_id, 0.5) for i in [*analyzed, quarantined, discovered]], now=NOW
+    )
+    states = ("ANALISADO", "QUARENTENA")
+
+    assert features.classifiable_ids(session, model_id, states, limit=10) == [
+        *analyzed,
+        quarantined,
+    ]
+    assert features.classifiable_ids(session, model_id, states, after_id=analyzed[0], limit=2) == [
+        analyzed[1],
+        analyzed[2],
+    ]
+    assert features.classifiable_ids(session, model_id, states, limit=10, meta_version=99) == []
+    assert features.filter_classifiable(
+        session, model_id, states, [quarantined, discovered, analyzed[0], 9999]
+    ) == sorted([quarantined, analyzed[0]])
+    assert (
+        features.filter_classifiable(session, model_id, states, [analyzed[0]], meta_version=99)
+        == []
+    )

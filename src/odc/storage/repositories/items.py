@@ -136,6 +136,28 @@ def list_ids_by_state(
     return list(session.execute(stmt).scalars())
 
 
+def states_of(session: Session, item_ids: Sequence[int]) -> dict[int, str]:
+    """Estado atual de cada item existente (consulta em blocos; ids ausentes ficam de fora)."""
+    found: dict[int, str] = {}
+    for start in range(0, len(item_ids), _CHUNK):
+        stmt = select(item.c.id, item.c.state).where(
+            item.c.id.in_(item_ids[start : start + _CHUNK])
+        )
+        found.update((int(row[0]), str(row[1])) for row in session.execute(stmt))
+    return found
+
+
+def set_state_many(session: Session, item_ids: Sequence[int], state: str, *, now: str) -> int:
+    """Muda o estado de vários itens (em blocos); devolve quantos foram atualizados."""
+    _require_state(state)
+    updated = 0
+    for start in range(0, len(item_ids), _CHUNK):
+        chunk = list(item_ids[start : start + _CHUNK])
+        stmt = update(item).where(item.c.id.in_(chunk)).values(state=state, updated_at=now)
+        updated += execute_dml(session, stmt).rowcount
+    return updated
+
+
 def count_by_state(session: Session) -> dict[str, int]:
     stmt = select(item.c.state, func.count()).group_by(item.c.state)
     return dict(session.execute(stmt).all())

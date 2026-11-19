@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from odc.config import AppSettings
-from odc.jobs.payloads import AutoActionsPayload
+from odc.jobs.payloads import AutoActionsPayload, TrainPayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.resumer import JobResumer
 from odc.jobs.runner import JobRunner
@@ -157,6 +157,28 @@ def test_put_modo_auto_enfileira_auto_actions_e_notifica(
         if isinstance(p, AutoActionsPayload)
     ]
     assert queued == [AutoActionsPayload(model_version_id=7)]
+
+
+def test_put_limiar_enfileira_train_manual(
+    make_api: MakeApi,
+    services: AppServices,
+    database: AccountDatabase,
+    supervisor: JobSupervisor,
+    with_current_model: None,
+) -> None:
+    api = make_api(
+        AppServices(
+            database=database,
+            auth=services.auth,
+            jobs=supervisor,
+            static_dir=services.static_dir,
+        )
+    )
+
+    response = api.put("/api/settings", json={"auto_threshold": 0.99})
+
+    assert response.status_code == 200
+    assert JobQueue(database).active_payloads(JobType.TRAIN) == [TrainPayload(trigger="manual")]
 
 
 def test_rota_nao_aceita_metodo_sem_contrato(api: TestClient) -> None:

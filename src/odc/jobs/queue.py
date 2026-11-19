@@ -14,7 +14,7 @@ import re
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Literal, Protocol
 
 from sqlalchemy import Engine
 
@@ -22,6 +22,7 @@ from odc.jobs.errors import ERROR_CODE_PATTERN, INVALID_PAYLOAD
 from odc.jobs.payloads import (
     MAX_EXTRACT_BATCH,
     PAYLOAD_MODELS,
+    AutoActionsPayload,
     ClassifyPayload,
     DeletePayload,
     ExtractPayload,
@@ -30,6 +31,7 @@ from odc.jobs.payloads import (
     PayloadError,
     ReconcilePayload,
     RestorePayload,
+    TrainPayload,
     parse_payload,
 )
 from odc.jobs.types import DEFAULT_PRIORITY, JobType, PauseReason
@@ -255,6 +257,16 @@ class JobQueue:
     def enqueue_classify_all(self) -> int:
         """Enfileira `classify(scope=all)`: classifica todo o acervo analisado."""
         return self.enqueue(JobType.CLASSIFY, ClassifyPayload(scope="all"))
+
+    def enqueue_train(self, trigger: Literal["threshold", "manual"]) -> Enqueued:
+        """Enfileira `train` deduplicado; `created=False` se já há um ativo."""
+        return self.enqueue_unique(JobType.TRAIN, TrainPayload(trigger=trigger))
+
+    def enqueue_auto_actions(self, model_version_id: int) -> int:
+        """Enfileira `auto_actions` para o modelo vigente recém-promovido (ou reconfigurado)."""
+        return self.enqueue(
+            JobType.AUTO_ACTIONS, AutoActionsPayload(model_version_id=model_version_id)
+        )
 
     # --- Ações sobre a quarentena (reconciliação do diário) ---
 

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from odc.storage.dto import FeatureRow
 from odc.storage.errors import NotFoundError, StorageValidationError
 from odc.storage.repositories._common import dto_columns, execute_dml, to_dto
-from odc.storage.tables import embedding_model, feature
+from odc.storage.tables import embedding_model, feature, item
 
 _META_COLUMNS = dto_columns(feature, FeatureRow)
 
@@ -131,6 +131,62 @@ def meta_versions(
         )
         found.update((int(row[0]), int(row[1])) for row in session.execute(stmt))
     return found
+
+
+def classifiable_ids(
+    session: Session,
+    embedding_model_id: int,
+    states: Sequence[str],
+    *,
+    after_id: int = 0,
+    limit: int,
+    meta_version: int | None = None,
+) -> list[int]:
+    """Ids com features do modelo, em um dos `states` e `id > after_id` (crescentes, `limit`).
+
+    `meta_version` restringe às features com essa versão de metadados (o modelo supervisionado
+    só aceita a sua; o zero-shot usa apenas o embedding e passa `None`).
+    """
+    stmt = (
+        select(feature.c.item_id)
+        .join(item, item.c.id == feature.c.item_id)
+        .where(
+            feature.c.embedding_model_id == embedding_model_id,
+            feature.c.item_id > after_id,
+            item.c.state.in_(list(states)),
+        )
+        .order_by(feature.c.item_id)
+        .limit(limit)
+    )
+    if meta_version is not None:
+        stmt = stmt.where(feature.c.meta_version == meta_version)
+    return [int(value) for value in session.execute(stmt).scalars()]
+
+
+def filter_classifiable(
+    session: Session,
+    embedding_model_id: int,
+    states: Sequence[str],
+    item_ids: Sequence[int],
+    *,
+    meta_version: int | None = None,
+) -> list[int]:
+    """Subconjunto de `item_ids` (crescente) que `classifiable_ids` aceitaria."""
+    found: list[int] = []
+    for start in range(0, len(item_ids), _CHUNK):
+        stmt = (
+            select(feature.c.item_id)
+            .join(item, item.c.id == feature.c.item_id)
+            .where(
+                feature.c.embedding_model_id == embedding_model_id,
+                feature.c.item_id.in_(list(item_ids[start : start + _CHUNK])),
+                item.c.state.in_(list(states)),
+            )
+        )
+        if meta_version is not None:
+            stmt = stmt.where(feature.c.meta_version == meta_version)
+        found.extend(int(value) for value in session.execute(stmt).scalars())
+    return sorted(found)
 
 
 def get(session: Session, item_id: int) -> FeatureRow | None:

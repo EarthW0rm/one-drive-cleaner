@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from odc.jobs.payloads import AutoActionsPayload
+from odc.jobs.payloads import AutoActionsPayload, TrainPayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType
 from odc.settings.service import MIN_TEMP_CAP_BYTES, SettingsPatch, SettingsService
@@ -135,3 +135,48 @@ def test_alterar_retreino_nao_enfileira(
     result = _service(database).update(_patch(retrain_every=30))
 
     assert result.auto_actions_job_id is None
+
+
+def _queued_train(database: AccountDatabase) -> list[TrainPayload]:
+    queue = JobQueue(database)
+    return [p for p in queue.active_payloads(JobType.TRAIN) if isinstance(p, TrainPayload)]
+
+
+def test_alterar_limiar_enfileira_train_manual_para_reabrir_o_gate(
+    database: AccountDatabase, with_current_model: None
+) -> None:
+    result = _service(database).update(_patch(auto_threshold=0.99))
+
+    assert result.train_job_id is not None
+    assert _queued_train(database) == [TrainPayload(trigger="manual")]
+
+
+def test_alterar_limiar_com_train_ativo_nao_duplica(
+    database: AccountDatabase, with_current_model: None
+) -> None:
+    service = _service(database)
+    service.update(_patch(auto_threshold=0.99))
+
+    second = service.update(_patch(auto_threshold=0.97))
+
+    assert second.train_job_id is None
+    assert len(_queued_train(database)) == 1
+
+
+def test_alterar_limiar_sem_modelo_vigente_nao_enfileira_train(database: AccountDatabase) -> None:
+    result = _service(database).update(_patch(auto_threshold=0.99))
+
+    assert result.train_job_id is None
+    assert _queued_train(database) == []
+
+
+def test_alterar_modo_ou_regravar_limiar_nao_enfileira_train(
+    database: AccountDatabase, with_current_model: None
+) -> None:
+    service = _service(database)
+
+    changed_mode = service.update(_patch(automation_mode="auto"))
+    same_threshold = service.update(_patch(auto_threshold=0.98))
+
+    assert changed_mode.train_job_id is None
+    assert same_threshold.train_job_id is None

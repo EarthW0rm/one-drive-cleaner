@@ -176,6 +176,16 @@ def test_auto_mode_not_eligible_is_zero(met: Metrics, reader: InMemoryMetricRead
     assert _val(_points(reader, "odc.model.auto_mode_eligible")[0]) == 0
 
 
+def test_record_predictions_em_lote(met: Metrics, reader: InMemoryMetricReader) -> None:
+    met.record_predictions(category=CAT, strategy=m.Strategy.LOGREG, confidences=[0.5, 0.9])
+    met.record_predictions(category=CAT, strategy=m.Strategy.LOGREG, confidences=[])
+
+    assert _val(_points(reader, "odc.predictions")[0]) == 2
+    assert _points(reader, "odc.prediction.confidence")[0].count == 2  # type: ignore[attr-defined]
+    with pytest.raises(ValueError, match="confidence"):
+        met.record_predictions(category=CAT, strategy=m.Strategy.LOGREG, confidences=[1.5])
+
+
 @pytest.mark.parametrize("bad", [-0.1, 1.1, float("nan")])
 def test_ratios_validated(met: Metrics, bad: float) -> None:
     with pytest.raises(ValueError, match="confidence"):

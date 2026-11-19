@@ -602,7 +602,12 @@ def test_fabrica_sem_graph_deixa_o_scan_sem_handler_e_mantem_a_limpeza(
         handler_factories=HANDLER_FACTORIES,
     )
     try:
-        assert set(recording_runner.created[0].handlers) == {JobType.CLEANUP}
+        # Sem Graph: só os handlers locais (limpeza, classificação e treino) existem.
+        assert set(recording_runner.created[0].handlers) == {
+            JobType.CLEANUP,
+            JobType.CLASSIFY,
+            JobType.TRAIN,
+        }
     finally:
         created.engine.dispose()
 

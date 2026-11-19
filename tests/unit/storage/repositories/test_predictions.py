@@ -185,3 +185,20 @@ def test_get_by_item_devolve_a_predicao_vigente_ou_none(
     assert found.item_id == classified
     assert found.margin == pytest.approx(0.4)
     assert predictions.get_by_item(session, unclassified.id) is None
+
+
+def test_replace_for_items_substitui_so_os_itens_informados(
+    session: Session, make_item: ItemFactory, version_id: int
+) -> None:
+    category = _cat(session, "screenshot")
+    other = _cat(session, "real_photo")
+    ids = [make_item("SUGERIDO").id for _ in range(3)]
+    first = [PredictionInput(i, category, 0.6, 0.2) for i in ids]
+    assert predictions.replace_for_items(session, version_id, first, now=NOW) == 3
+
+    changed = [PredictionInput(ids[0], other, 0.9, 0.8)]
+    assert predictions.replace_for_items(session, version_id, changed, now=NOW) == 1
+
+    found = [predictions.get_by_item(session, i) for i in ids]
+    assert [f.category_id for f in found if f is not None] == [other, category, category]
+    assert predictions.replace_for_items(session, version_id, [], now=NOW) == 0

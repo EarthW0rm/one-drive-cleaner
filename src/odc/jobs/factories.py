@@ -22,12 +22,22 @@ from odc.graph.client import GraphClient
 from odc.jobs.errors import FatalJobError, PauseError, RetryableError
 from odc.jobs.handler import Handler, HandlerDeps, HandlerFactory, JobContext
 from odc.jobs.types import JobType, PauseReason
+from odc.ml.classify_handler import ClassifyHandler
+from odc.ml.errors import InvalidModelError, ModelMismatchError
+from odc.ml.train_handler import TrainHandler
 from odc.quarantine.delete import DeleteHandler, InvalidConfirmationError
 from odc.quarantine.folders import AppFolders
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler, Reconciler
 from odc.quarantine.restore import RestoreHandler
 from odc.scanning.scanner import ScanHandler
+
+
+def _embedders(deps: HandlerDeps) -> ActiveEmbedderProvider:
+    """Provedor compartilhado do embedder (uma instância por processo); fallback: um próprio."""
+    if deps.embedders is not None:
+        return deps.embedders
+    return ActiveEmbedderProvider(metrics=deps.metrics)
 
 
 def scan_handler(deps: HandlerDeps) -> Handler | None:
@@ -156,7 +166,57 @@ def extract_handler(deps: HandlerDeps) -> Handler | None:
             deps.graph,
             deps.queue,
             CleanupService(deps.database),
-            ActiveEmbedderProvider(metrics=deps.metrics),
+            _embedders(deps),
+            metrics=deps.metrics,
+            tracer=deps.tracer,
+        )
+    )
+
+
+MODEL_MISMATCH = "MODEL_MISMATCH"
+INVALID_MODEL = "INVALID_MODEL"
+
+
+class _MlJobHandler:
+    """Adapta `classify`/`train` ao runner, traduzindo os erros de domínio em sinais de job.
+
+    Modelo vigente de outro `embedding_model` → falha definitiva `MODEL_MISMATCH` (exige
+    reextração); modelo serializado inválido → `INVALID_MODEL`; pesos indisponíveis ou falha de
+    inferência → nova tentativa; configuração do embedder inválida → falha definitiva.
+    """
+
+    def __init__(self, inner: Handler) -> None:
+        self._inner = inner
+
+    async def run(self, ctx: JobContext) -> None:
+        try:
+            await self._inner.run(ctx)
+        except ModelMismatchError as error:
+            raise FatalJobError(MODEL_MISMATCH) from error
+        except InvalidModelError as error:
+            raise FatalJobError(INVALID_MODEL) from error
+        except WeightsUnavailableError as error:
+            raise RetryableError(WEIGHTS_UNAVAILABLE) from error
+        except EmbedderConfigError as error:
+            raise FatalJobError(EMBEDDER_CONFIG) from error
+        except EmbeddingError as error:
+            raise RetryableError(EMBEDDING_FAILED) from error
+
+
+def classify_handler(deps: HandlerDeps) -> Handler | None:
+    """`ClassifyHandler` (worker de fundo): local, não depende da Graph."""
+    return _MlJobHandler(
+        ClassifyHandler(deps.database, _embedders(deps), metrics=deps.metrics, tracer=deps.tracer)
+    )
+
+
+def train_handler(deps: HandlerDeps) -> Handler | None:
+    """`TrainHandler` (worker de fundo): local; reenfileira `extract`, `classify` e ações."""
+    return _MlJobHandler(
+        TrainHandler(
+            deps.database,
+            _embedders(deps),
+            deps.queue,
             metrics=deps.metrics,
             tracer=deps.tracer,
         )
@@ -166,6 +226,8 @@ def extract_handler(deps: HandlerDeps) -> Handler | None:
 HANDLER_FACTORIES: Mapping[JobType, HandlerFactory] = {
     JobType.SCAN: scan_handler,
     JobType.EXTRACT: extract_handler,
+    JobType.CLASSIFY: classify_handler,
+    JobType.TRAIN: train_handler,
     JobType.CLEANUP: cleanup_handler,
     JobType.RECONCILE: reconcile_handler,
     JobType.MOVE: move_handler,
@@ -176,6 +238,7 @@ HANDLER_FACTORIES: Mapping[JobType, HandlerFactory] = {
 
 __all__ = [
     "HANDLER_FACTORIES",
+    "classify_handler",
     "cleanup_handler",
     "delete_handler",
     "extract_handler",
@@ -183,4 +246,5 @@ __all__ = [
     "reconcile_handler",
     "restore_handler",
     "scan_handler",
+    "train_handler",
 ]

@@ -29,6 +29,7 @@ from odc.auth.service import AuthService
 from odc.cleanup.handler import DiskUsageSource
 from odc.cleanup.service import CleanupService
 from odc.config import AppSettings
+from odc.features.model_registry import ActiveEmbedderProvider
 from odc.graph.client import GraphClient
 from odc.graph.http import GRAPH_BASE_URL, GraphHttp
 from odc.graph.limiter import AimdLimiter
@@ -239,6 +240,7 @@ def _job_supervisor(  # noqa: PLR0913 - composição do runner com as dependênc
         metrics=metrics,
         tracer=tracer,
         confirmations=confirmations,
+        embedders=ActiveEmbedderProvider(metrics=metrics),
     )
     built = {job_type: factory(deps) for job_type, factory in factories.items()}
     resolved: dict[JobType, Handler] = {
