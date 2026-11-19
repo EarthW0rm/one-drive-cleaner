@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createQueryClient } from "../api/queryClient";
 import { onboardedHandlers, sessionHandler } from "../test/handlers";
+import { reviewApiHandlers } from "../test/review-fixtures";
 import { server } from "../test/server";
 
 import { AppRoutes } from "./routes";
@@ -35,5 +36,18 @@ describe("AppRoutes", () => {
     );
 
     expect(await screen.findByRole("button", { name: /Varrer agora/ })).toBeInTheDocument();
+  });
+
+  it("renderiza a tela de Revisão em /revisao", async () => {
+    server.use(sessionHandler(), ...onboardedHandlers(), ...reviewApiHandlers().handlers);
+    render(
+      <QueryClientProvider client={createQueryClient(0)}>
+        <MemoryRouter initialEntries={["/revisao"]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByLabelText(/^Item 1:/)).toBeInTheDocument();
   });
 });
