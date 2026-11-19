@@ -108,6 +108,8 @@ class FakeItem:
     has_location: bool = False
     content: bytes | None = None
     spec: ImageSpec | None = None
+    has_thumbnail: bool = True
+    """Falso: o OneDrive não gera miniatura (a extração cai no download do original)."""
     c_rev: int = 1
     e_rev: int = 1
     change_seq: int = 0
@@ -125,6 +127,10 @@ class FakeItem:
     @property
     def is_image(self) -> bool:
         return self.mime_type is not None and self.mime_type.startswith("image/")
+
+    @property
+    def serves_thumbnail(self) -> bool:
+        return self.is_image and self.has_thumbnail
 
 
 @dataclass(frozen=True, slots=True)

@@ -14,6 +14,12 @@ quando tudo responde (antes dela, o `run` anuncia a URL do app em texto).
 Encerra em SIGINT/SIGTERM ou se o processo pai morrer (sem órfãos), removendo o temporário.
 Execução: `python -m tests.e2e_launcher.launch [--populate N --seed S]` (a SPA precisa estar
 compilada: `make build-frontend`).
+
+Modo de resiliência (TF-157-03): só o `odc` num processo próprio, para que o teste o mate com
+SIGKILL e o reinicie sobre o mesmo estado. `--graph-url` aponta para um Graph fake que vive no
+processo do teste (não sobe o interno), `--state-dir` fixa o diretório de dados (preservado ao
+encerrar, para a retomada), `--logged-in` já inicia com a conta fake ativa e `--headless` dispensa
+a SPA compilada (nenhum navegador participa).
 """
 
 import argparse
@@ -31,6 +37,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from types import TracebackType
 from typing import Final, Self
+from urllib.parse import urlsplit
 
 import platformdirs
 import pytest
@@ -62,11 +69,19 @@ _SERVE_POLL_S: Final = 0.2
 
 @dataclass(frozen=True, slots=True)
 class LaunchConfig:
-    """Parâmetros do ambiente: itens semeados no OneDrive fake e porta do app (0 = livre)."""
+    """Parâmetros do ambiente: itens semeados no OneDrive fake e porta do app (0 = livre).
+
+    `graph_url` (base da API, ex.: `http://127.0.0.1:1234/v1.0`) usa um Graph fake externo em vez
+    do interno; `state_dir` fixa e preserva o diretório de dados; `logged_in` inicia com a conta
+    fake ativa (sem passar pelo fluxo de login).
+    """
 
     populate: int = 0
     seed: int = 0
     app_port: int = 0
+    graph_url: str | None = None
+    state_dir: Path | None = None
+    logged_in: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,11 +144,12 @@ class E2eStack:
         self._ready = threading.Event()
         self._patches = pytest.MonkeyPatch()
         self._root: Path | None = None
+        self._owns_root = True
         self._graph: GraphServer | None = None
         self._thread: threading.Thread | None = None
         self._urls: E2eUrls | None = None
         self._error: BootstrapError | None = None
-        self.auth = FakeAuthService()
+        self.auth = FakeAuthService(logged_in=self._config.logged_in)
 
     @property
     def root(self) -> Path:
@@ -147,7 +163,11 @@ class E2eStack:
     def graph(self) -> GraphServer:
         """Servidor do Graph fake (estado em `graph.drive`, falhas em `graph.faults`)."""
         if self._graph is None:
-            message = "o ambiente E2E não foi iniciado"
+            message = (
+                "o Graph fake é externo a este processo"
+                if self._config.graph_url is not None
+                else "o ambiente E2E não foi iniciado"
+            )
             raise RuntimeError(message)
         return self._graph
 
@@ -163,7 +183,7 @@ class E2eStack:
         if self._root is not None:
             message = "o ambiente E2E já foi iniciado"
             raise RuntimeError(message)
-        self._root = Path(tempfile.mkdtemp(prefix="odc-e2e-"))
+        self._root = self._create_root()
         atexit.register(self.stop)
         try:
             return self._start()
@@ -171,14 +191,35 @@ class E2eStack:
             self.stop()
             raise
 
-    def _start(self) -> E2eUrls:
-        root = self.root
-        self._isolate_directories(root)
+    def _create_root(self) -> Path:
+        """Temporário próprio (removido ao encerrar) ou o `state_dir` pedido (preservado)."""
+        state_dir = self._config.state_dir
+        if state_dir is None:
+            return Path(tempfile.mkdtemp(prefix="odc-e2e-"))
+        self._owns_root = False
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return state_dir
+
+    def _start_graph(self) -> tuple[str, str]:
+        """Sobe o Graph fake interno ou adota o externo; devolve (base da API, origem)."""
+        external = self._config.graph_url
+        if external is not None:
+            if self._config.populate:
+                message = "populate não se aplica a um Graph fake externo"
+                raise ValueError(message)
+            parts = urlsplit(external)
+            return external, f"{parts.scheme}://{parts.netloc}"
         graph = GraphServer()
         self._graph = graph
         graph.drive.populate(self._config.populate, self._config.seed)
         graph.start()
-        self._patches.setattr(bootstrap_module, "GRAPH_BASE_URL", graph.base_url)
+        return graph.base_url, graph.origin
+
+    def _start(self) -> E2eUrls:
+        root = self.root
+        self._isolate_directories(root)
+        graph_base_url, graph_origin = self._start_graph()
+        self._patches.setattr(bootstrap_module, "GRAPH_BASE_URL", graph_base_url)
         port = self._config.app_port or free_port()
         settings = load_settings({"port": port, "open_browser": False, "otel_enabled": False})
         embedders = ActiveEmbedderProvider(builder=fake_embedder_builder)
@@ -194,7 +235,7 @@ class E2eStack:
         if not self._ready.wait(START_TIMEOUT_S) or self._error is not None:
             message = f"o odc não iniciou: {self._error}"
             raise RuntimeError(message)
-        self._urls = E2eUrls(app_url=f"http://127.0.0.1:{port}", graph_url=graph.origin)
+        self._urls = E2eUrls(app_url=f"http://127.0.0.1:{port}", graph_url=graph_origin)
         return self._urls
 
     def _isolate_directories(self, root: Path) -> None:
@@ -235,7 +276,8 @@ class E2eStack:
             self._patches.undo()
             root, self._root = self._root, None
             if root is not None:
-                shutil.rmtree(root, ignore_errors=True)
+                if self._owns_root:
+                    shutil.rmtree(root, ignore_errors=True)
                 atexit.unregister(self.stop)
 
     def request_stop(self) -> None:
@@ -296,13 +338,27 @@ def main(
     parser.add_argument("--populate", type=int, default=0, help="itens semeados no OneDrive fake")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--port", type=int, default=0, help="porta do app (0 = livre)")
+    parser.add_argument(
+        "--graph-url", help="base da API de um Graph fake externo (modo resiliência)"
+    )
+    parser.add_argument("--state-dir", type=Path, help="diretório de dados preservado ao encerrar")
+    parser.add_argument("--logged-in", action="store_true", help="inicia com a conta fake ativa")
+    parser.add_argument("--headless", action="store_true", help="sem navegador: dispensa a SPA")
     args = parser.parse_args(argv)
     try:
-        require_frontend_build()
+        if not args.headless:
+            require_frontend_build()
     except FileNotFoundError as error:
         sys.stderr.write(f"{error}\n")
         return EXIT_NOT_BUILT
-    config = LaunchConfig(populate=args.populate, seed=args.seed, app_port=args.port)
+    config = LaunchConfig(
+        populate=args.populate,
+        seed=args.seed,
+        app_port=args.port,
+        graph_url=args.graph_url,
+        state_dir=args.state_dir,
+        logged_in=args.logged_in,
+    )
     with E2eStack(config) as stack:
         sys.stdout.write(json.dumps(stack.urls.to_json()) + "\n")
         sys.stdout.flush()

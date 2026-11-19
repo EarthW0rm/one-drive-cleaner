@@ -149,6 +149,24 @@ class GraphApi:
         )
         return response
 
+    def operation_of(self, request: ApiRequest) -> GraphOperation | None:
+        """Operação que a requisição aciona (`None` se nenhuma rota casa)."""
+        matched = self._match(request)
+        return matched[0].op if matched else None
+
+    def stats(self) -> dict[str, object]:
+        """Contadores do endpoint `/__fake__/stats`: chamadas por operação e downloads do CDN."""
+        calls: dict[str, int] = {}
+        for call in list(self.calls):
+            if call.op is not None:
+                calls[call.op.value] = calls.get(call.op.value, 0) + 1
+        cdn = {"thumb": 0, "content": 0}
+        for cdn_call in list(self.cdn_calls):
+            kind = cdn_call.path.lstrip("/").split("/", 1)[0]
+            if kind in cdn:
+                cdn[kind] += 1
+        return {"calls": calls, "cdn": cdn, "items": self.drive.count()}
+
     def handle_cdn(self, path: str, query: Query, headers: Mapping[str, str]) -> ApiResponse:
         """CDN fake: `/content/<id>` e `/thumb/<id>/<size>` com assinatura `sig`."""
         self.cdn_calls.append(CdnCall(path, "authorization" in headers))
@@ -358,7 +376,7 @@ class GraphApi:
         item = self._target(context)
         size = context.match.group("size")
         self.drive.thumbnail_dimensions(size)
-        if not item.is_image:
+        if not item.serves_thumbnail:
             return _error(404, "itemNotFound", "item sem miniatura")
         return self._redirect(f"/thumb/{item.id}/{size}")
 
@@ -366,7 +384,7 @@ class GraphApi:
         item = self._target(context)
         size = context.match.group("size")
         max_width, max_height = self.drive.thumbnail_dimensions(size)
-        if not item.is_image:
+        if not item.serves_thumbnail:
             return _error(404, "itemNotFound", "item sem miniatura")
         ratio = min(
             1.0, max_width / (item.width or max_width), max_height / (item.height or max_height)

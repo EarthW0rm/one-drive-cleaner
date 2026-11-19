@@ -574,6 +574,47 @@ class TestContentAndThumbnails:
 
         assert call(api, "GET", f"/me/drive/items/{pdf.id}/thumbnails/0/small").status == 404
 
+    def test_image_without_thumbnail_is_404_on_both_thumbnail_routes(
+        self, api: GraphApi, drive: FakeDrive
+    ) -> None:
+        image = drive.add_image(ROOT_ID, "a.jpg", ImageKind.PHOTO)
+        image.has_thumbnail = False
+
+        content = call(api, "GET", f"/me/drive/items/{image.id}/thumbnails/0/small/content")
+        url = call(api, "GET", f"/me/drive/items/{image.id}/thumbnails/0/small")
+        original = call(api, "GET", f"/me/drive/items/{image.id}/content")
+
+        assert (content.status, url.status, original.status) == (404, 404, 302)
+
+    def test_operation_of_classifies_requests(self, api: GraphApi) -> None:
+        move = ApiRequest("PATCH", f"/me/drive/items/{ROOT_ID}")
+        delta = ApiRequest("GET", f"/me/drive/items/{ROOT_ID}/delta")
+        unknown = ApiRequest("GET", "/me/outra/coisa")
+
+        assert api.operation_of(move) is GraphOperation.MOVE
+        assert api.operation_of(delta) is GraphOperation.DELTA
+        assert api.operation_of(unknown) is None
+
+    def test_stats_count_calls_per_operation_and_cdn_downloads(
+        self, api: GraphApi, drive: FakeDrive
+    ) -> None:
+        image = drive.add_image(ROOT_ID, "a.png", ImageKind.SCREENSHOT)
+        call(api, "GET", f"/me/drive/items/{ROOT_ID}/delta")
+        call(api, "GET", f"/me/drive/items/{ROOT_ID}/delta")
+        call(api, "GET", "/me/drive")
+        call(api, "GET", "/me/desconhecido")
+        sig = {"sig": "FAKE-SIGNATURE"}
+        api.handle_cdn(f"/content/{image.id}", sig, {})
+        api.handle_cdn(f"/thumb/{image.id}/small", sig, {})
+        api.handle_cdn(f"/thumb/{image.id}/small", sig, {})
+        api.handle_cdn("/outra/coisa", sig, {})
+
+        assert api.stats() == {
+            "calls": {"delta": 2, "drive": 1},
+            "cdn": {"thumb": 2, "content": 1},
+            "items": 1,
+        }
+
     def test_cdn_serves_content_and_thumbnails(self, api: GraphApi, drive: FakeDrive) -> None:
         image = drive.add_image(ROOT_ID, "a.png", ImageKind.SCREENSHOT)
 

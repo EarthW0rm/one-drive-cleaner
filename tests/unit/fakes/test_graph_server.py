@@ -3,7 +3,8 @@
 
 import io
 import json
-from collections.abc import AsyncIterator, Iterator
+import threading
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from odc.graph.errors import GraphConflict, GraphGone, GraphPreconditionFailed
 from odc.graph.http import GraphHttp
 from odc.graph.limiter import AimdLimiter
 from odc.telemetry.metrics import GraphOperation
+from tests.fakes.breakpoints import CDN_CONTENT, CDN_THUMB, Breakpoint, Phase
 from tests.fakes.faults import (
     etag_changed,
     expire_token,
@@ -230,6 +232,190 @@ class TestControlEndpoints:
         with GraphServer(control=False) as server:
             assert httpx.get(f"{server.origin}/__fake__/healthz").status_code == 404
             assert httpx.get(f"{server.base_url}/me/drive", headers=AUTH).status_code == 200
+
+
+def _in_thread(request: Callable[[], httpx.Response]) -> tuple[threading.Thread, list[object]]:
+    """Dispara a requisição numa thread (ela fica retida); guarda a resposta ou a exceção."""
+    outcome: list[object] = []
+
+    def run() -> None:
+        try:
+            outcome.append(request())
+        except httpx.HTTPError as error:
+            outcome.append(error)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    return thread, outcome
+
+
+def _wait(point: Breakpoint) -> None:
+    assert point.wait_reached(30)
+
+
+class TestStats:
+    def test_stats_report_calls_per_operation_and_cdn_downloads(self, server: GraphServer) -> None:
+        image = server.drive.add_image(ROOT_ID, "a.png", ImageKind.SCREENSHOT)
+        httpx.get(f"{server.base_url}/me/drive", headers=AUTH)
+        httpx.get(f"{server.base_url}/me/drive", headers=AUTH)
+        redirect = httpx.get(f"{server.base_url}/me/drive/items/{image.id}/content", headers=AUTH)
+        httpx.get(redirect.headers["location"])
+
+        stats = httpx.get(f"{server.origin}/__fake__/stats").json()
+
+        assert stats == {
+            "calls": {"drive": 2, "content": 1},
+            "cdn": {"thumb": 0, "content": 1},
+            "items": 1,
+        }
+
+
+class TestBreakpoints:
+    def _move_request(self, server: GraphServer, item_id: str, parent: str) -> httpx.Response:
+        return httpx.patch(
+            f"{server.base_url}/me/drive/items/{item_id}",
+            json={"parentReference": {"id": parent}},
+            headers=AUTH,
+            timeout=30,
+        )
+
+    def test_before_phase_holds_the_request_without_applying_it(self, server: GraphServer) -> None:
+        folder = server.drive.add_folder(ROOT_ID, "Destino")
+        item = server.drive.add_file(ROOT_ID, "a.txt", b"x", "text/plain")
+        point = server.breakpoints.add("move", 1)
+
+        thread, outcome = _in_thread(lambda: self._move_request(server, item.id, folder.id))
+        _wait(point)
+        applied_while_held = server.drive.get(item.id).parent_id
+        point.drop()
+        thread.join(30)
+
+        assert applied_while_held == ROOT_ID
+        assert server.drive.get(item.id).parent_id == ROOT_ID
+        assert isinstance(outcome[0], httpx.HTTPError)
+
+    def test_after_phase_applies_the_change_but_drops_the_response(
+        self, server: GraphServer
+    ) -> None:
+        folder = server.drive.add_folder(ROOT_ID, "Destino")
+        item = server.drive.add_file(ROOT_ID, "a.txt", b"x", "text/plain")
+        point = server.breakpoints.add("move", 1, Phase.AFTER)
+
+        thread, outcome = _in_thread(lambda: self._move_request(server, item.id, folder.id))
+        _wait(point)
+        applied_while_held = server.drive.get(item.id).parent_id
+        point.drop()
+        thread.join(30)
+
+        assert applied_while_held == folder.id
+        assert isinstance(outcome[0], httpx.HTTPError)
+
+    def test_released_request_completes_normally(self, server: GraphServer) -> None:
+        folder = server.drive.add_folder(ROOT_ID, "Destino")
+        item = server.drive.add_file(ROOT_ID, "a.txt", b"x", "text/plain")
+        point = server.breakpoints.add("move", 1, Phase.AFTER)
+
+        thread, outcome = _in_thread(lambda: self._move_request(server, item.id, folder.id))
+        _wait(point)
+        point.release()
+        thread.join(30)
+
+        response = outcome[0]
+        assert isinstance(response, httpx.Response)
+        assert response.status_code == 200
+
+    def test_only_the_nth_request_is_held(self, server: GraphServer) -> None:
+        point = server.breakpoints.add("drive", 3)
+
+        first = httpx.get(f"{server.base_url}/me/drive", headers=AUTH)
+        second = httpx.get(f"{server.base_url}/me/drive", headers=AUTH)
+        thread, outcome = _in_thread(
+            lambda: httpx.get(f"{server.base_url}/me/drive", headers=AUTH, timeout=30)
+        )
+        _wait(point)
+        point.release()
+        thread.join(30)
+
+        assert (first.status_code, second.status_code) == (200, 200)
+        assert isinstance(outcome[0], httpx.Response)
+
+    def test_unknown_routes_are_never_held(self, server: GraphServer) -> None:
+        response = httpx.get(f"{server.base_url}/me/desconhecido", headers=AUTH)
+
+        assert response.status_code == 400
+
+    @pytest.mark.parametrize(
+        ("path", "key"),
+        [("thumb", CDN_THUMB), ("content", CDN_CONTENT)],
+    )
+    def test_cdn_downloads_can_be_held_before_and_after(
+        self, server: GraphServer, path: str, key: str
+    ) -> None:
+        image = server.drive.add_image(ROOT_ID, "a.png", ImageKind.SCREENSHOT)
+        suffix = f"/{image.id}/small" if path == "thumb" else f"/{image.id}"
+        url = f"{server.origin}/__cdn__/{path}{suffix}?sig=FAKE-SIGNATURE"
+        for phase in (Phase.BEFORE, Phase.AFTER):
+            point = server.breakpoints.add(key, 1, phase)
+            thread, outcome = _in_thread(lambda: httpx.get(url, timeout=30))
+            _wait(point)
+            point.drop()
+            thread.join(30)
+
+            assert isinstance(outcome[0], httpx.HTTPError)
+
+        assert httpx.get(url).status_code == 200
+
+    def test_cdn_content_can_stall_in_the_middle_of_the_body(self, server: GraphServer) -> None:
+        image = server.drive.add_image(ROOT_ID, "a.png", ImageKind.SCREENSHOT)
+        full = server.drive.render_content(image)
+        url = f"{server.origin}/__cdn__/content/{image.id}?sig=FAKE-SIGNATURE"
+        point = server.breakpoints.add(CDN_CONTENT, 1, Phase.MID_BODY)
+        received: list[int] = []
+        first_chunk = threading.Event()
+
+        def download() -> httpx.Response:
+            with httpx.stream("GET", url, timeout=30) as response:
+                for chunk in response.iter_bytes():
+                    received.append(len(chunk))
+                    first_chunk.set()
+            return response
+
+        thread, outcome = _in_thread(download)
+        _wait(point)
+        assert first_chunk.wait(30)  # o cliente já leu a 1ª metade; a 2ª só vem após a liberação
+        half_arrived = sum(received)
+        point.release()
+        thread.join(30)
+
+        assert 0 < half_arrived < len(full)
+        assert sum(received) == len(full)
+        assert isinstance(outcome[0], httpx.Response)
+
+    def test_dropping_a_stalled_download_cuts_the_connection(self, server: GraphServer) -> None:
+        image = server.drive.add_image(ROOT_ID, "a.png", ImageKind.SCREENSHOT)
+        url = f"{server.origin}/__cdn__/content/{image.id}?sig=FAKE-SIGNATURE"
+        point = server.breakpoints.add(CDN_CONTENT, 1, Phase.MID_BODY)
+
+        thread, outcome = _in_thread(lambda: httpx.get(url, timeout=30))
+        _wait(point)
+        point.drop()
+        thread.join(30)
+
+        assert isinstance(outcome[0], httpx.HTTPError)
+
+    def test_stop_frees_requests_that_are_still_held(self) -> None:
+        server = GraphServer()
+        server.start()
+        point = server.breakpoints.add("drive", 1)
+
+        thread, _ = _in_thread(
+            lambda: httpx.get(f"{server.base_url}/me/drive", headers=AUTH, timeout=30)
+        )
+        _wait(point)
+        server.stop()
+        thread.join(30)
+
+        assert not thread.is_alive()
 
 
 @pytest.mark.asyncio

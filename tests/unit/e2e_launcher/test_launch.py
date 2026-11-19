@@ -31,6 +31,7 @@ from tests.e2e_launcher.launch import (
     watch_parent,
     with_embedders,
 )
+from tests.fakes.graph_server import GraphServer
 from tests.fakes.identity_fake import FAKE_CODE
 
 
@@ -263,3 +264,73 @@ def test_request_stop_unblocks_wait_stopped() -> None:
     waiter.join(5)
 
     assert not waiter.is_alive()
+
+
+class TestResilienceMode:
+    """Modo da TF-157-03: Graph fake externo, estado preservado e conta fake já ativa."""
+
+    def test_uses_the_external_graph_and_starts_logged_in(self, tmp_path: Path) -> None:
+        with GraphServer() as graph:
+            config = LaunchConfig(graph_url=graph.base_url, logged_in=True, state_dir=tmp_path)
+            with E2eStack(config) as stack:
+                session = httpx.get(f"{stack.urls.app_url}/api/session").json()
+                roots = httpx.get(f"{stack.urls.app_url}/api/scan-roots")
+                urls = stack.urls
+
+        assert urls.graph_url == graph.origin
+        assert session["auth_state"] == "authenticated"
+        # O cliente da Graph do app falou com o servidor externo (a Camera Roll vem de lá).
+        assert roots.status_code == 200
+        assert graph.api.stats()["calls"]
+
+    def test_external_graph_is_not_reachable_through_the_stack(self, tmp_path: Path) -> None:
+        with GraphServer() as graph:
+            config = LaunchConfig(graph_url=graph.base_url, state_dir=tmp_path)
+            with E2eStack(config) as stack, pytest.raises(RuntimeError, match="externo"):
+                stack.graph  # noqa: B018 - o servidor vive no processo do teste
+
+    def test_seeding_an_external_graph_is_rejected(self, tmp_path: Path) -> None:
+        with GraphServer() as graph:
+            config = LaunchConfig(graph_url=graph.base_url, state_dir=tmp_path, populate=5)
+
+            with pytest.raises(ValueError, match="populate"):
+                E2eStack(config).start()
+
+    def test_state_dir_survives_stop_and_is_reused_on_restart(self, tmp_path: Path) -> None:
+        state = tmp_path / "estado"
+        with GraphServer() as graph:
+            config = LaunchConfig(graph_url=graph.base_url, state_dir=state, logged_in=True)
+            with E2eStack(config) as first:
+                database = next((first.root / "data").rglob("odc.db"))
+                marker = database.parent / "marcador"
+                marker.write_text("persistido", encoding="utf-8")
+            assert marker.is_file()
+            with E2eStack(config) as second:
+                assert second.root == state
+                assert marker.read_text(encoding="utf-8") == "persistido"
+
+    def test_main_accepts_the_resilience_flags(self, tmp_path: Path) -> None:
+        printed: list[dict[str, str]] = []
+
+        def wait(stack: E2eStack) -> None:
+            assert httpx.get(f"{stack.urls.app_url}/api/session").json()["auth_state"] == (
+                "authenticated"
+            )
+            printed.append(stack.urls.to_json())
+
+        with GraphServer() as graph, redirect_stdout(io.StringIO()):
+            code = launch.main(
+                [
+                    "--graph-url",
+                    graph.base_url,
+                    "--state-dir",
+                    str(tmp_path / "estado"),
+                    "--logged-in",
+                    "--headless",
+                ],
+                wait=wait,
+            )
+
+        assert code == 0
+        assert printed[0]["graph_url"] == graph.origin
+        assert (tmp_path / "estado" / "data").is_dir()

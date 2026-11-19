@@ -5,7 +5,12 @@ Mesmo comportamento do adaptador `respx` (ambos usam `GraphApi`). Rotas:
 - `/v1.0/...`: a API do Graph (use `GraphServer.base_url` como base do `GraphHttp`);
 - `/__cdn__/...`: destino dos redirects de conteúdo/miniaturas (mesma origem do servidor);
 - `/__fake__/...`: controle, existente apenas aqui (nunca empacotado com o `odc`):
-  `GET|POST|DELETE /faults`, `POST /populate`, `POST /images`, `DELETE /items/{id}`, `GET /healthz`.
+  `GET|POST|DELETE /faults`, `POST /populate`, `POST /images`, `DELETE /items/{id}`, `GET /healthz`
+  e `GET /stats` (chamadas por operação e downloads do CDN, para os testes de resiliência).
+
+Pontos de parada (`GraphServer.breakpoints`, `tests.fakes.breakpoints`): retêm a n-ésima requisição
+de uma operação antes de aplicá-la, depois de aplicá-la ou no meio do corpo de um download, para
+que o teste mate o `odc` num instante exato, sem `sleep`.
 
 As URLs de miniatura devolvidas no `$batch` usam `cdn_url` (https, como a Graph real, pois os
 modelos recusam outro esquema); por padrão é um host `.invalid`, e o harness E2E pode apontar
@@ -18,14 +23,15 @@ import signal
 import socket
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from types import TracebackType
 from typing import Final, Self
 
 import uvicorn
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from tests.fakes.breakpoints import CDN_CONTENT, CDN_THUMB, Breakpoints, Phase
 from tests.fakes.faults import FaultPlan, fault_from_json
 from tests.fakes.graph_api import DEFAULT_CDN_URL, ApiRequest, ApiResponse, GraphApi
 from tests.fakes.graph_state import FakeDrive, FakeDriveError
@@ -38,9 +44,12 @@ START_TIMEOUT_S: Final = 10.0
 _METHODS: Final = ["GET", "POST", "PATCH", "DELETE"]
 
 
-def create_app(api: GraphApi, *, control: bool = True) -> FastAPI:
+def create_app(
+    api: GraphApi, *, control: bool = True, breakpoints: Breakpoints | None = None
+) -> FastAPI:
     """App ASGI do Graph fake; `control=False` omite os endpoints `/__fake__`."""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    gates = breakpoints if breakpoints is not None else Breakpoints()
 
     @app.api_route(API_PREFIX + "/{path:path}", methods=_METHODS)
     async def graph(request: Request, path: str) -> Response:
@@ -52,17 +61,56 @@ def create_app(api: GraphApi, *, control: bool = True) -> FastAPI:
             body=await request.body(),
         )
         base_url = str(request.base_url).rstrip("/") + API_PREFIX
-        return _to_response(api.handle(api_request, base_url))
+        operation = api.operation_of(api_request)
+        key = operation.value if operation is not None else None
+        number = gates.arrive(key) if key is not None else 0
+        if key is not None and await _dropped(gates, key, number, Phase.BEFORE):
+            return _to_response(_ABORT)
+        response = api.handle(api_request, base_url)
+        if key is not None and await _dropped(gates, key, number, Phase.AFTER):
+            return _to_response(_ABORT)
+        return _to_response(response)
 
     @app.get(CDN_PREFIX + "/{path:path}")
-    def cdn(request: Request, path: str) -> Response:
+    async def cdn(request: Request, path: str) -> Response:
         headers = {name.lower(): value for name, value in request.headers.items()}
+        key = CDN_CONTENT if path.lstrip("/").startswith("content/") else CDN_THUMB
+        number = gates.arrive(key)
+        if await _dropped(gates, key, number, Phase.BEFORE):
+            return _to_response(_ABORT)
         response = api.handle_cdn("/" + path, dict(request.query_params.items()), headers)
+        if await _dropped(gates, key, number, Phase.AFTER):
+            return _to_response(_ABORT)
+        if response.content and gates.find(key, number, Phase.MID_BODY) is not None:
+            return _stalled(response, gates, key, number)
         return _to_response(response)
 
     if control:
         _add_control_routes(app, api)
     return app
+
+
+_ABORT = ApiResponse(0, abort=True)
+
+
+async def _dropped(gates: Breakpoints, key: str, number: int, phase: Phase) -> bool:
+    """Retém a requisição se houver ponto de parada; `True` se o teste a derrubou."""
+    point = await gates.pause(key, number, phase)
+    return point is not None and point.dropped
+
+
+def _stalled(response: ApiResponse, gates: Breakpoints, key: str, number: int) -> Response:
+    """Download que envia metade do corpo e para até o teste liberar (ou derrubar) a conexão."""
+    content = response.content or b""
+    half = len(content) // 2
+
+    async def body() -> AsyncIterator[bytes]:
+        yield content[:half]
+        if not await _dropped(gates, key, number, Phase.MID_BODY):
+            yield content[half:]
+
+    headers = {**response.headers, "content-length": str(len(content))}
+    return StreamingResponse(body(), status_code=response.status, headers=headers)
 
 
 def _to_response(response: ApiResponse) -> Response:
@@ -83,6 +131,10 @@ def _add_control_routes(app: FastAPI, api: GraphApi) -> None:
     @app.get(CONTROL_PREFIX + "/healthz")
     def healthz() -> dict[str, object]:
         return {"status": "ok", "items": api.drive.count()}
+
+    @app.get(CONTROL_PREFIX + "/stats")
+    def stats() -> dict[str, object]:
+        return api.stats()
 
     _add_fault_routes(app, api.faults)
     _add_drive_routes(app, api.drive)
@@ -173,11 +225,12 @@ class GraphServer:
         self.port: int = self._socket.getsockname()[1]
         self.drive = drive if drive is not None else FakeDrive()
         self.faults = faults if faults is not None else FaultPlan()
+        self.breakpoints = Breakpoints()
         self.api = GraphApi(
             self.drive, self.faults, cdn_url=cdn_url, redirect_url=f"{self.origin}{CDN_PREFIX}"
         )
         config = uvicorn.Config(
-            create_app(self.api, control=control),
+            create_app(self.api, control=control, breakpoints=self.breakpoints),
             log_level="warning",
             log_config=None,
             lifespan="off",
@@ -210,7 +263,8 @@ class GraphServer:
             time.sleep(0.01)
 
     def stop(self) -> None:
-        """Encerra o servidor e libera a porta (idempotente)."""
+        """Encerra o servidor e libera a porta (idempotente); requisições retidas são soltas."""
+        self.breakpoints.release_all()
         self._server.should_exit = True
         if self._thread is not None:
             self._thread.join(timeout=START_TIMEOUT_S)
