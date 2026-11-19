@@ -106,6 +106,23 @@ describe("SettingsPage", () => {
     );
   });
 
+  it("dá nome acessível aos controles deslizantes", async () => {
+    const { handlers } = settingsHandlers();
+    server.use(...handlers);
+
+    renderPage();
+    await openForm();
+
+    expect(screen.getByRole("slider", { name: "Limiar de confiança" })).toHaveAttribute(
+      "aria-valuenow",
+      "0.98",
+    );
+    expect(screen.getByRole("slider", { name: "Frequência de retreino" })).toHaveAttribute(
+      "aria-valuenow",
+      "20",
+    );
+  });
+
   it("envia só o campo alterado e confirma o salvamento", async () => {
     const user = userEvent.setup();
     const { bodies, handlers } = settingsHandlers();

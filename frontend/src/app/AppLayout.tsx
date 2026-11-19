@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { BellOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
-import { Alert, Badge, Button, Layout, Menu, Result, Space, Tag, Typography } from "antd";
+import { Alert, Badge, Button, Layout, Menu, Result, Space, Tag, Typography, theme } from "antd";
 import { useEffect, type ReactElement } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -18,6 +18,7 @@ export const ONBOARDING_PATH = "/onboarding";
 export function AppLayout(): ReactElement {
   const session = useSession();
   const { mode, toggle } = useTheme();
+  const { token } = theme.useToken();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const logout = useLogout();
@@ -35,7 +36,7 @@ export function AppLayout(): ReactElement {
   return (
     <Layout style={{ minHeight: "100vh" }}>
       <Sider breakpoint="lg" collapsedWidth={64}>
-        <Typography.Title level={4} style={{ color: "inherit", margin: 16 }}>
+        <Typography.Title level={4} style={{ color: token.colorTextLightSolid, margin: 16 }}>
           OneDrive Cleaner
         </Typography.Title>
         <Menu
@@ -59,6 +60,7 @@ export function AppLayout(): ReactElement {
             </Typography.Text>
             <Button
               type="text"
+              style={{ color: "inherit" }}
               loading={logout.isPending}
               onClick={() => {
                 logout.mutate();
@@ -71,6 +73,7 @@ export function AppLayout(): ReactElement {
             ) : null}
             <Button
               type="text"
+              style={{ color: "inherit" }}
               aria-label="Alternar tema"
               icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
               onClick={toggle}

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { expect, test as base, type APIRequestContext } from "@playwright/test";
 
-/** Origem das URLs de miniatura que o Graph fake devolve (`GraphServer(cdn_url=...)` padrão). */
-export const FAKE_CDN_ORIGIN = "https://cdn.graph-fake.example.invalid";
-/** Host do provedor de identidade fake (`tests/fakes/identity_fake.py`). */
-export const FAKE_IDP_HOST = "login.fake.invalid";
-/** Código de autorização aceito pela identidade fake. */
-export const FAKE_AUTH_CODE = "FAKE-code";
+import { AppApi } from "../support/api";
+import { FAKE_AUTH_CODE, FAKE_CDN_ORIGIN, FAKE_IDP_HOST } from "../support/constants";
+import { startStack } from "../support/launcher";
+import type { ImageKind } from "../support/types";
 
-export type ImageKind = "photo" | "screenshot" | "meme" | "document";
+export { FAKE_CDN_ORIGIN, FAKE_IDP_HOST, FAKE_AUTH_CODE };
+export type { ImageKind };
 
 /** Falha do Graph fake (`tests/fakes/faults.py`): `kind` e `times` mais os campos do tipo. */
 export interface FaultSpec {
@@ -20,6 +19,11 @@ export interface FaultSpec {
 export interface AppUrls {
   readonly appUrl: string;
   readonly graphUrl: string;
+}
+
+export interface GraphStats {
+  readonly calls: Readonly<Record<string, number>>;
+  readonly cdn: { readonly thumb: number; readonly content: number };
 }
 
 export interface NewImage {
@@ -36,11 +40,16 @@ export interface FakeGraph {
   deleteItem: (itemId: string) => Promise<void>;
   addFaults: (...faults: FaultSpec[]) => Promise<void>;
   clearFaults: () => Promise<void>;
-}
-
-interface SessionBody {
-  readonly csrf_token: string;
-  readonly auth_state: "authenticated" | "login_required";
+  /** Chamadas recebidas por operação e downloads do CDN fake (`GET /__fake__/stats`). */
+  stats: () => Promise<GraphStats>;
+  /** Faltas ainda pendentes (`times` restantes): vazio quando todas já dispararam. */
+  pendingFaults: () => Promise<FaultSpec[]>;
+  /** Id do item (arquivo ou pasta) no caminho `Pictures/Camera Roll/x.jpg`; `null` se não existe. */
+  idAt: (path: string) => Promise<string | null>;
+  /** Nomes dos filhos da pasta; `null` se a pasta não existe. */
+  childNames: (path: string) => Promise<string[] | null>;
+  /** Pasta pai (id) e nome atuais do item; `null` se foi apagado ou não existe. */
+  locationOf: (itemId: string) => Promise<{ parentId: string; name: string } | null>;
 }
 
 interface Fixtures {
@@ -48,18 +57,12 @@ interface Fixtures {
   fakeGraph: FakeGraph;
   /** Entra pela interface (o teste começa sem sessão) e aguarda o menu principal. */
   login: () => Promise<void>;
-  /** Garante que cada teste comece sem sessão (o app e o Graph fake são compartilhados). */
-  loggedOut: undefined;
+  /** Cliente tipado da API local, na sessão do navegador do teste (preparação e observação). */
+  api: AppApi;
+  /** Entra pela API (sem interface), para os cenários que não são sobre o login. */
+  signedIn: undefined;
   /** Serve o CDN fake (https, sem DNS) a partir do Graph fake, sem afrouxar a CSP do app. */
   fakeCdn: undefined;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value === "") {
-    throw new Error(`${name} ausente: o launcher E2E não informou as URLs (webServer).`);
-  }
-  return value;
 }
 
 async function control(
@@ -73,8 +76,12 @@ async function control(
   expect(response.ok(), `${method.toUpperCase()} ${url}`).toBe(true);
 }
 
+/** Qualquer `Bearer` serve ao Graph fake; o observador não consome falhas de token. */
+const OBSERVER = { authorization: "Bearer FAKE-e2e-observer" };
+
 function createFakeGraph(request: APIRequestContext, graphUrl: string): FakeGraph {
   const base = `${graphUrl}/__fake__`;
+  const api = `${graphUrl}/v1.0`;
   return {
     seed: (count, seed = 0) => control(request, `${base}/populate`, "post", { count, seed }),
     addImage: async ({ name, kind = "photo", parentId, seed = 0 }) => {
@@ -87,26 +94,68 @@ function createFakeGraph(request: APIRequestContext, graphUrl: string): FakeGrap
       control(request, `${base}/items/${encodeURIComponent(itemId)}`, "delete"),
     addFaults: (...faults) => control(request, `${base}/faults`, "post", faults),
     clearFaults: () => control(request, `${base}/faults`, "delete"),
+    stats: async () => {
+      const response = await request.get(`${base}/stats`);
+      expect(response.ok(), "GET /__fake__/stats").toBe(true);
+      return (await response.json()) as GraphStats;
+    },
+    pendingFaults: async () => {
+      const response = await request.get(`${base}/faults`);
+      expect(response.ok(), "GET /__fake__/faults").toBe(true);
+      return (await response.json()) as FaultSpec[];
+    },
+    idAt: async (path) => {
+      const response = await request.get(`${api}/me/drive/root:/${encodeURI(path)}`, {
+        headers: OBSERVER,
+      });
+      return response.ok() ? ((await response.json()) as { id: string }).id : null;
+    },
+    childNames: async (path) => {
+      const folder = await request.get(`${api}/me/drive/root:/${encodeURI(path)}`, {
+        headers: OBSERVER,
+      });
+      if (!folder.ok()) {
+        return null;
+      }
+      const { id } = (await folder.json()) as { id: string };
+      const children = await request.get(`${api}/me/drive/items/${id}/children?$top=999`, {
+        headers: OBSERVER,
+      });
+      expect(children.ok(), `GET children de ${path}`).toBe(true);
+      const body = (await children.json()) as { value: { name: string }[] };
+      return body.value.map((child) => child.name);
+    },
+    locationOf: async (itemId) => {
+      const response = await request.get(`${api}/me/drive/items/${encodeURIComponent(itemId)}`, {
+        headers: OBSERVER,
+      });
+      if (!response.ok()) {
+        return null;
+      }
+      const body = (await response.json()) as {
+        name: string;
+        deleted?: object;
+        parentReference?: { id: string };
+      };
+      return body.deleted === undefined && body.parentReference !== undefined
+        ? { parentId: body.parentReference.id, name: body.name }
+        : null;
+    },
   };
 }
 
-async function logoutIfAuthenticated(request: APIRequestContext, appUrl: string): Promise<void> {
-  const session = await request.get(`${appUrl}/api/session`);
-  const body = (await session.json()) as SessionBody;
-  if (body.auth_state === "authenticated") {
-    const response = await request.post(`${appUrl}/auth/logout`, {
-      headers: { "x-csrf-token": body.csrf_token },
-    });
-    expect(response.status(), "POST /auth/logout").toBe(204);
-  }
-}
-
 export const test = base.extend<Fixtures>({
-  app: async ({}, use) => {
-    await use({
-      appUrl: requiredEnv("ODC_E2E_APP_URL"),
-      graphUrl: requiredEnv("ODC_E2E_GRAPH_URL"),
-    });
+  // Uma instância isolada (app, banco, Graph fake, identidade e modelo) por teste.
+  app: async ({}, use, testInfo) => {
+    const stack = await startStack();
+    try {
+      await use({ appUrl: stack.appUrl, graphUrl: stack.graphUrl });
+    } finally {
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await testInfo.attach("launcher-stderr", { body: stack.log(), contentType: "text/plain" });
+      }
+      await stack.stop();
+    }
   },
 
   baseURL: async ({ app }, use) => {
@@ -116,18 +165,17 @@ export const test = base.extend<Fixtures>({
   fakeGraph: async ({ app, playwright }, use) => {
     const request = await playwright.request.newContext();
     await use(createFakeGraph(request, app.graphUrl));
-    // Falhas pendentes de um teste não podem vazar para o seguinte.
-    await control(request, `${app.graphUrl}/__fake__/faults`, "delete");
     await request.dispose();
   },
 
-  loggedOut: [
-    async ({ context, app }, use) => {
-      await logoutIfAuthenticated(context.request, app.appUrl);
-      await use(undefined);
-    },
-    { auto: true },
-  ],
+  api: async ({ context, app }, use) => {
+    await use(new AppApi(context.request, app.appUrl));
+  },
+
+  signedIn: async ({ api }, use) => {
+    await api.login();
+    await use(undefined);
+  },
 
   fakeCdn: [
     async ({ context, app }, use) => {
@@ -137,6 +185,8 @@ export const test = base.extend<Fixtures>({
         await route.fulfill({ response: await context.request.get(upstream) });
       });
       await use(undefined);
+      // Miniaturas ainda em voo ao fim do teste não podem virar erro de rota.
+      await context.unrouteAll({ behavior: "ignoreErrors" });
     },
     { auto: true },
   ],

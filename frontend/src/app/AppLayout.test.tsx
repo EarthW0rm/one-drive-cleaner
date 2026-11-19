@@ -35,6 +35,15 @@ function renderApp(path: string, mode: "light" | "dark" = "light", toggle = () =
 }
 
 describe("AppLayout", () => {
+  it("usa texto claro no título da barra lateral escura (contraste)", () => {
+    server.use(sessionHandler(), ...onboardedHandlers());
+    renderApp("/revisao");
+
+    const title = screen.getByRole("heading", { name: "OneDrive Cleaner" });
+
+    expect(title).toHaveStyle({ color: "rgb(255, 255, 255)" });
+  });
+
   it("exibe o menu com as 6 telas e navega entre elas", async () => {
     server.use(
       sessionHandler(),

@@ -68,6 +68,9 @@ describe("ScansPage", () => {
     expect(
       screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow")),
     ).toEqual(["25", "100"]);
+    expect(
+      screen.getByRole("progressbar", { name: "Progresso da varredura: 1 de 4" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("desconhecido")).toBeInTheDocument();
     expect(screen.getByText("estranho")).toBeInTheDocument();
     expect(screen.getByText("INTERNAL")).toBeInTheDocument();

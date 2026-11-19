@@ -171,6 +171,7 @@ function RangeInput({
           }}
           tooltip={{ open: false }}
           aria-label={label}
+          ariaLabelForHandle={label}
         />
       </Col>
       <Col flex="140px">

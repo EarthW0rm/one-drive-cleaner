@@ -85,7 +85,7 @@ export function CategoriesPage(): ReactElement {
       dataIndex: "archived",
       key: "archived",
       render: (archived: boolean) =>
-        archived ? <Tag>Arquivada</Tag> : <Tag color="green">Ativa</Tag>,
+        archived ? <Tag>Arquivada</Tag> : <Tag color="success">Ativa</Tag>,
     },
     {
       title: "Ações",

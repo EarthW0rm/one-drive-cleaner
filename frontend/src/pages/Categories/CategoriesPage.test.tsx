@@ -194,5 +194,6 @@ describe("CategoriesPage", () => {
       await screen.findByText("Ocorreu um erro interno. Tente novamente."),
     ).toBeInTheDocument();
     expect(row("Meme")).toHaveTextContent("Ativa");
+    expect(within(row("Meme")).getByText("Ativa")).toHaveClass("ant-tag-success");
   });
 });

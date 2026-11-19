@@ -21,6 +21,11 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
       "no-console": "error",
+      // Fixtures usadas só pelo efeito (`signedIn`) entram como `_nome` na assinatura do teste.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
   {

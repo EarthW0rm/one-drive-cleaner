@@ -78,6 +78,7 @@ function progressOf(job: JobModel): ReactElement {
   return (
     <Progress
       percent={Math.round((done / total) * 100)}
+      aria-label={`Progresso da varredura: ${String(done)} de ${String(total)}`}
       size="small"
       status={job.status === "running" ? "active" : "normal"}
     />
