@@ -13,11 +13,15 @@ from odc.storage.tables import (
     QUARANTINE_MODES,
     QUARANTINE_STATUSES,
     RESTORE_REASONS,
+    item,
     quarantine_entry,
 )
 
 _COLUMNS = dto_columns(quarantine_entry, QuarantineEntryRow)
 _T = quarantine_entry
+_CHUNK = 500
+# Restaurações decididas pelo utilizador: o item não volta à quarentena automaticamente.
+USER_RESTORE_REASONS = ("false_positive", "manual")
 
 
 def create(
@@ -114,3 +118,40 @@ def mark_deleted(session: Session, entry_id: int, *, now: str) -> None:
 
 def mark_external_removed(session: Session, entry_id: int) -> None:
     _transition(session, entry_id, status="external_removed")
+
+
+def active_outside_folder(
+    session: Session, folder_id: str, *, limit: int, after_id: int = 0
+) -> Sequence[QuarantineEntryRow]:
+    """Entradas `active` de itens `QUARENTENA` que não estão na pasta `folder_id` (por id).
+
+    Base da reconciliação da pasta de quarentena apagada ou recriada (spec seção 4).
+    """
+    stmt = (
+        select(*_COLUMNS)
+        .join(item, item.c.id == _T.c.item_id)
+        .where(
+            _T.c.status == "active",
+            _T.c.id > after_id,
+            item.c.state == "QUARENTENA",
+            item.c.parent_id != folder_id,
+        )
+        .order_by(_T.c.id)
+        .limit(limit)
+    )
+    return [to_dto(QuarantineEntryRow, r) for r in session.execute(stmt)]
+
+
+def left_by_user_item_ids(session: Session, item_ids: Sequence[int]) -> frozenset[int]:
+    """Itens que o utilizador tirou da quarentena (restauração dele ou remoção por fora do app)."""
+    found: set[int] = set()
+    unique = list(dict.fromkeys(item_ids))
+    for start in range(0, len(unique), _CHUNK):
+        chunk = unique[start : start + _CHUNK]
+        stmt = select(_T.c.item_id).where(
+            _T.c.item_id.in_(chunk),
+            (_T.c.status == "external_removed")
+            | ((_T.c.status == "restored") & _T.c.restore_reason.in_(USER_RESTORE_REASONS)),
+        )
+        found.update(int(value) for value in session.execute(stmt).scalars())
+    return frozenset(found)

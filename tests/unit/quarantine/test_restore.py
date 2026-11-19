@@ -41,12 +41,15 @@ from tests.unit.quarantine.support import (
     FakeQueue,
     RestoreGraphFake,
     active_entry,
+    add_label,
     entries,
     forbidden,
     get_item,
     journal_count,
     journal_rows,
+    new_current_model,
     observed,
+    predict,
     quarantined,
 )
 from tests.unit.scanning.support import (
@@ -96,6 +99,11 @@ class _NoopReconciler:
         del checkpoint
         self.calls.append(sorted(item_ids or ()))
         return ReconcileReport()
+
+
+def _reclassified_as_real_photo(rig: Rig) -> None:
+    """Modelo vigente prevê "Foto real" (não removível) para o item: RN-17 vale."""
+    predict(rig.db, rig.item.id, "real_photo", new_current_model(rig.db))
 
 
 @pytest.fixture
@@ -195,6 +203,8 @@ async def test_item_renomeado_na_quarentena_volta_com_o_nome_original(rig: Rig) 
 @pytest.mark.parametrize("reason", ["false_positive", "reclassified", "manual"])
 @pytest.mark.asyncio
 async def test_motivo_e_gravado_na_entrada_e_na_metrica(rig: Rig, reason: str) -> None:
+    _reclassified_as_real_photo(rig)
+
     await rig.handler.run(_ctx(rig.item.id, reason=reason))
 
     (entry,) = entries(rig.db, rig.item.id)
@@ -537,6 +547,7 @@ async def test_falha_ambigua_propaga_e_deixa_a_intencao_pendente(
 
 @pytest.mark.asyncio
 async def test_nova_execucao_reconcilia_a_intencao_pendente_e_conclui(rig: Rig) -> None:
+    _reclassified_as_real_photo(rig)
     rig.graph.move_errors[DRIVE_ID] = GraphUnavailable(status=None, attempts=5)
     with pytest.raises(GraphUnavailable):
         await rig.handler.run(_ctx(rig.item.id, reason="reclassified"))
@@ -657,3 +668,48 @@ def test_relatorio_conta_cada_desfecho() -> None:
     report.count(Outcome.FAILED, fallback=False)
 
     assert (report.restored, report.fallback, report.skipped, report.failed) == (2, 1, 1, 1)
+
+
+# --- RN-17: regra reavaliada na execução (TF-155-06) ---
+
+
+@pytest.mark.asyncio
+async def test_reclassificado_com_rotulo_removivel_posterior_nao_e_restaurado(rig: Rig) -> None:
+    _reclassified_as_real_photo(rig)
+    add_label(rig.db, rig.item.id, "screenshot")  # o utilizador decidiu: removível (RN-11)
+
+    await rig.handler.run(_ctx(rig.item.id, reason="reclassified"))
+
+    assert rig.graph.moves == []
+    assert journal_count(rig.db) == 0
+    assert get_item(rig.db, rig.item.id).state == "QUARENTENA"
+    assert _restores(rig) == {}
+
+
+@pytest.mark.asyncio
+async def test_reclassificado_sem_modelo_vigente_nao_e_restaurado(rig: Rig) -> None:
+    await rig.handler.run(_ctx(rig.item.id, reason="reclassified"))
+
+    assert rig.graph.moves == []
+    assert get_item(rig.db, rig.item.id).state == "QUARENTENA"
+
+
+@pytest.mark.asyncio
+async def test_reclassificado_com_predicao_removivel_do_vigente_nao_e_restaurado(
+    rig: Rig,
+) -> None:
+    predict(rig.db, rig.item.id, "screenshot", new_current_model(rig.db))
+
+    await rig.handler.run(_ctx(rig.item.id, reason="reclassified"))
+
+    assert rig.graph.moves == []
+    assert active_entry(rig.db, rig.item.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_restauracao_do_utilizador_nao_depende_da_predicao(rig: Rig) -> None:
+    predict(rig.db, rig.item.id, "screenshot", new_current_model(rig.db))
+
+    await rig.handler.run(_ctx(rig.item.id, reason="false_positive"))
+
+    assert get_item(rig.db, rig.item.id).state == "RESTAURADO"

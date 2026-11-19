@@ -25,11 +25,13 @@ from odc.jobs.types import JobType, PauseReason
 from odc.ml.classify_handler import ClassifyHandler
 from odc.ml.errors import InvalidModelError, ModelMismatchError
 from odc.ml.train_handler import TrainHandler
+from odc.quarantine.auto_actions_handler import AutoActionsHandler
 from odc.quarantine.delete import DeleteHandler, InvalidConfirmationError
 from odc.quarantine.folders import AppFolders
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler, Reconciler
 from odc.quarantine.restore import RestoreHandler
+from odc.quarantine.sweep import QuarantineSweep
 from odc.scanning.scanner import ScanHandler
 
 
@@ -90,6 +92,24 @@ def restore_handler(deps: HandlerDeps) -> Handler | None:
         deps.graph,
         folders,
         reconciler,
+        deps.queue,
+        metrics=deps.metrics,
+        tracer=deps.tracer,
+    )
+
+
+def auto_actions_handler(deps: HandlerDeps) -> Handler | None:
+    """`AutoActionsHandler` (worker de ações): RN-17 e comportamento Automático (RN-14..16, 27).
+
+    Só enfileira `move(mode=auto)` e `restore(reason=reclassified)`; nunca há exclusão
+    automática (RN-20). Exige a Graph para garantir as pastas e conferir a quarentena.
+    """
+    if deps.graph is None:
+        return None
+    return AutoActionsHandler(
+        deps.database,
+        AppFolders(deps.database, deps.graph),
+        QuarantineSweep(deps.database, deps.graph),
         deps.queue,
         metrics=deps.metrics,
         tracer=deps.tracer,
@@ -233,11 +253,13 @@ HANDLER_FACTORIES: Mapping[JobType, HandlerFactory] = {
     JobType.MOVE: move_handler,
     JobType.RESTORE: restore_handler,
     JobType.DELETE: delete_handler,
+    JobType.AUTO_ACTIONS: auto_actions_handler,
 }
 
 
 __all__ = [
     "HANDLER_FACTORIES",
+    "auto_actions_handler",
     "classify_handler",
     "cleanup_handler",
     "delete_handler",

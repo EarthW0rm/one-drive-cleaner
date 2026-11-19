@@ -15,6 +15,9 @@ ALLOWED_KEYS = frozenset(
         "quarantine_folder_id",
         "restored_folder_id",
         "app_root_folder_id",
+        # Alerta da RN-27 (rodada automática limitada): instante e itens não movidos.
+        "auto_move_capped_at",
+        "auto_move_capped_count",
     }
 )
 

@@ -4,6 +4,8 @@
 - `extract` concluído: enfileira `cleanup(job_end)`.
 - `extract` (ou outro) pausado por `temp_cap`: conta a pausa e enfileira `cleanup(job_end)`.
 - `cleanup` concluído: retoma os jobs pausados por `temp_cap` (`JobResumer.on_cleanup_completed`).
+- `classify` concluído: rodada de ações automáticas do modelo vigente (J4 passo 2: ao fim de
+  cada análise), quando não há outra classificação ativa (`enqueue_auto_actions_for_current`).
 
 O módulo `odc.cleanup` não importa `odc.jobs`: a ligação entre eles vive aqui.
 """
@@ -41,6 +43,8 @@ class JobFollowUps:
                 await self._enqueue_cleanup()
             elif claimed.type is JobType.CLEANUP and self._resumer is not None:
                 await self._resumer.on_cleanup_completed()
+            elif claimed.type is JobType.CLASSIFY:
+                await asyncio.to_thread(self._queue.enqueue_auto_actions_for_current)
         elif decision.outcome is Outcome.PAUSED and decision.pause_reason is PauseReason.TEMP_CAP:
             if self._metrics is not None:
                 self._metrics.record_temp_cap_pause()

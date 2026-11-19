@@ -217,3 +217,17 @@ def test_replace_for_items_substitui_so_os_itens_informados(
     found = [predictions.get_by_item(session, i) for i in ids]
     assert [f.category_id for f in found if f is not None] == [other, category, category]
     assert predictions.replace_for_items(session, version_id, [], now=NOW) == 0
+
+
+def test_get_many_devolve_so_os_itens_com_predicao(
+    session: Session, make_item: ItemFactory, version_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(predictions, "_CHUNK", 2)
+    ids = _seed(session, make_item, version_id, [0.1, 0.2, 0.3])
+    unpredicted = make_item("ANALISADO").id
+
+    found = predictions.get_many(session, [*ids, unpredicted, ids[0]])
+
+    assert sorted(found) == ids
+    assert found[ids[1]].margin == 0.2
+    assert predictions.get_many(session, []) == {}

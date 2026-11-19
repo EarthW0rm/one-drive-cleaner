@@ -161,6 +161,22 @@ def has_active(
     return bool(session.execute(stmt).scalar_one())
 
 
+def has_waiting(session: Session, job_type: str, *, payload: Mapping[str, object]) -> bool:
+    """Existe job `queued` ou `paused` (ainda não em execução) do tipo com o mesmo payload."""
+    if job_type not in JOB_TYPES:
+        raise StorageValidationError("tipo de job inválido")
+    stmt = select(
+        exists().where(
+            and_(
+                job.c.type == job_type,
+                job.c.status.in_(("queued", "paused")),
+                job.c.payload == _dump_payload(payload),
+            )
+        )
+    )
+    return bool(session.execute(stmt).scalar_one())
+
+
 def has_active_besides(session: Session, job_type: str, job_id: int) -> bool:
     """Existe outro job `queued`, `running` ou `paused` do tipo, além de `job_id`."""
     if job_type not in JOB_TYPES:

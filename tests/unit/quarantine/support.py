@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from odc.graph.errors import GraphClientError, GraphConflict, GraphNotFound
 from odc.graph.models import DriveItem, ParentReference
+from odc.ml.evaluator import ModelMetrics
 from odc.quarantine.folders import AppFolderIds
 from odc.storage.dto import ItemRow, JournalRow, QuarantineEntryRow
 from odc.storage.repositories import (
@@ -21,6 +22,7 @@ from odc.storage.repositories import (
     models,
     predictions,
     quarantine,
+    settings,
 )
 from odc.storage.tables import embedding_model, quarantine_entry
 from odc.storage.tables import journal as journal_table
@@ -415,3 +417,97 @@ class DeleteGraphFake:
         if error is not None:
             raise error
         self.remote.pop(item_id, None)
+
+
+# --- Automação (TF-155-06) ---
+
+SETTING_NOW = "2026-11-18T09:00:00.000000+00:00"
+
+
+def set_settings(db: Database, **values: object) -> None:
+    """Grava configurações do utilizador (validadas pelo repositório)."""
+    with UnitOfWork(db.engine) as session:
+        for key, value in values.items():
+            settings.set_value(session, key, value, now=SETTING_NOW)
+
+
+def promote_prediction_model(db: Database, item_id: int) -> int:
+    """Promove a versão de modelo que gerou a predição do item; devolve o id."""
+    with UnitOfWork(db.engine) as session:
+        found = predictions.get_by_item(session, item_id)
+        assert found is not None
+        models.promote(session, found.model_version_id)
+    return found.model_version_id
+
+
+def enable_auto_mode(db: Database, item_id: int) -> int:
+    """Modo `auto` explícito e o modelo da predição do item como vigente."""
+    set_settings(db, automation_mode="auto")
+    return promote_prediction_model(db, item_id)
+
+
+def new_current_model(db: Database) -> int:
+    """Cria e promove uma versão de modelo (a anterior vira `retired`); devolve o id."""
+    with UnitOfWork(db.engine) as session:
+        model_id = session.execute(
+            select(embedding_model.c.id).order_by(embedding_model.c.id).limit(1)
+        ).scalar_one()
+        version = models.create_candidate(
+            session,
+            strategy="logreg",
+            embedding_model_id=int(model_id),
+            labels_count=0,
+            categories=["screenshot"],
+            params=b"",
+            metrics=None,
+            trigger="manual",
+            now=SETTING_NOW,
+        )
+        models.promote(session, version.id)
+    return version.id
+
+
+def set_gate_metrics(
+    db: Database,
+    model_id: int,
+    precision: float | None,
+    *,
+    support: int = 30,
+    threshold: float = 0.98,
+) -> None:
+    """Métricas do modelo (base do gate Evolutivo)."""
+    metrics = ModelMetrics(
+        per_category=(),
+        removable_precision=precision,
+        removable_support=support,
+        macro_f1=0.9,
+        confusion=(),
+        labels=(),
+        holdout_size=0,
+        threshold=threshold,
+        holdout_digest="d",
+    )
+    with UnitOfWork(db.engine) as session:
+        models.set_metrics(session, model_id, metrics.to_json())
+
+
+def predict(
+    db: Database, item_id: int, slug: str, model_id: int, *, confidence: float = 0.99
+) -> None:
+    """Predição vigente do item (substitui a anterior) gerada por `model_id`."""
+    with UnitOfWork(db.engine) as session:
+        category = categories.get_by_slug(session, slug)
+        assert category is not None
+        predictions.replace_for_items(
+            session,
+            model_id,
+            [predictions.PredictionInput(item_id, category.id, confidence, 0.5)],
+            now=SETTING_NOW,
+        )
+
+
+def add_label(db: Database, item_id: int, slug: str, source: str = "review") -> None:
+    with UnitOfWork(db.engine) as session:
+        category = categories.get_by_slug(session, slug)
+        assert category is not None
+        labels.add_many(session, [labels.LabelInput(item_id, category.id, source)], now=SETTING_NOW)

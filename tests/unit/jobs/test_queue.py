@@ -29,6 +29,7 @@ from odc.storage.errors import NotFoundError, StorageValidationError
 from odc.storage.migrate import upgrade
 from odc.storage.repositories import jobs as jobs_repo
 from odc.storage.repositories import journal as journal_repo
+from odc.storage.repositories import models as models_repo
 from odc.storage.tables import job
 from odc.storage.uow import UnitOfWork
 from odc.telemetry.metrics import Metrics
@@ -839,3 +840,75 @@ def test_enqueue_auto_actions(queue: JobQueue) -> None:
 
     assert queue.active_payloads(JobType.AUTO_ACTIONS) == [AutoActionsPayload(model_version_id=7)]
     assert job_id > 0
+
+
+# --- Ações automáticas (TF-155-06) ---
+
+
+def _promote_model(holder: EngineHolder) -> int:
+    with UnitOfWork(holder.engine) as session:
+        version = models_repo.create_candidate(
+            session,
+            strategy="logreg",
+            embedding_model_id=1,
+            labels_count=0,
+            categories=["a"],
+            params=b"",
+            metrics=None,
+            trigger="manual",
+            now="2026-11-18T00:00:00+00:00",
+        )
+        models_repo.promote(session, version.id)
+    return version.id
+
+
+def test_auto_actions_ao_fim_da_analise_usa_o_modelo_vigente(
+    queue: JobQueue, holder: EngineHolder
+) -> None:
+    assert queue.enqueue_auto_actions_for_current() is None  # sem modelo vigente
+    model_id = _promote_model(holder)
+
+    job_id = queue.enqueue_auto_actions_for_current()
+
+    assert job_id is not None
+    assert queue.active_payloads(JobType.AUTO_ACTIONS) == [
+        AutoActionsPayload(model_version_id=model_id)
+    ]
+    assert queue.enqueue_auto_actions_for_current() is None  # já há um aguardando
+
+
+def test_auto_actions_ao_fim_da_analise_ignora_o_que_esta_em_execucao(
+    queue: JobQueue, holder: EngineHolder
+) -> None:
+    _promote_model(holder)
+    running = queue.enqueue_auto_actions_for_current()
+    claimed = queue.claim_next()
+    assert claimed is not None
+    assert claimed.id == running
+
+    assert queue.enqueue_auto_actions_for_current() is not None
+
+
+def test_auto_actions_ao_fim_da_analise_espera_outra_classificacao(
+    queue: JobQueue, holder: EngineHolder
+) -> None:
+    _promote_model(holder)
+    queue.enqueue_classify_all()
+
+    assert queue.classification_pending() is True
+    assert queue.enqueue_auto_actions_for_current() is None
+
+
+def test_pending_action_item_ids_por_operacao_e_modo(queue: JobQueue) -> None:
+    assert queue.classification_pending() is False
+    queue.enqueue_move([1, 2], "manual")
+    queue.enqueue_move([3], "auto")
+    queue.enqueue_restore([4], "reclassified")
+    queue.enqueue(JobType.DELETE, DeletePayload(item_ids=[5], confirmation_id="c"))
+
+    assert queue.pending_action_item_ids("move") == {1, 2, 3}
+    assert queue.pending_action_item_ids("move", "auto") == {3}
+    assert queue.pending_action_item_ids("restore") == {4}
+    assert queue.pending_action_item_ids("restore", "auto") == frozenset()
+    assert queue.pending_action_item_ids("delete") == frozenset()
+    assert queue.pending_action_item_ids("ensure_folder") == frozenset()

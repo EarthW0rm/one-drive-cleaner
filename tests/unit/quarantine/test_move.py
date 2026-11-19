@@ -38,13 +38,18 @@ from tests.unit.quarantine.support import (
     FakeQueue,
     MoveGraphFake,
     active_entry,
+    add_label,
     classify_item,
+    enable_auto_mode,
     entries,
     get_item,
     has_analysis,
     journal_count,
     journal_of_item,
+    new_current_model,
     observed,
+    predict,
+    set_settings,
 )
 from tests.unit.scanning.support import (
     BASE,
@@ -154,6 +159,8 @@ async def test_cada_item_movido_tem_diario_intent_para_done(rig: Rig) -> None:
 
 @pytest.mark.asyncio
 async def test_modo_automatico_e_registrado_na_entrada_e_na_metrica(rig: Rig) -> None:
+    enable_auto_mode(rig.db, rig.item.id)
+
     await rig.handler.run(_ctx(rig.item.id, mode="auto"))
 
     (entry,) = entries(rig.db, rig.item.id)
@@ -227,6 +234,7 @@ async def test_rotulo_foto_real_nunca_e_movido_mesmo_com_predicao_removivel(rig:
 @pytest.mark.asyncio
 async def test_predicao_foto_real_sem_rotulo_nao_e_movida(rig: Rig) -> None:
     protected = _extra_item(rig, "FAKE-ITEM-2", prediction="real_photo")
+    enable_auto_mode(rig.db, protected.id)
 
     await rig.handler.run(_ctx(protected.id, mode="auto"))
 
@@ -647,3 +655,100 @@ def test_move_report_conta_cada_desfecho() -> None:
         report.count(outcome)
 
     assert report == MoveReport(moved=2, skipped=1, blocked=1, failed=1)
+
+
+# --- Movimento automático: gate e regra reavaliados na execução (TF-155-06) ---
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["manual", "evolutive"])
+async def test_movimento_automatico_sem_modo_efetivo_auto_nao_move_nada(
+    rig: Rig, mode: str
+) -> None:
+    enable_auto_mode(rig.db, rig.item.id)
+    set_settings(rig.db, automation_mode=mode)  # gate perdido entre a decisão e a execução
+
+    await rig.handler.run(_ctx(rig.item.id, mode="auto"))
+
+    assert rig.graph.moves == []
+    assert rig.graph.gets == []
+    assert rig.folders.calls == 0
+    assert get_item(rig.db, rig.item.id).state == "SUGERIDO"
+    assert _moves(rig) == {}
+    (span,) = rig.telemetry.spans(MOVE_SPAN)
+    assert dict(span.attributes or {})["odc.action.result"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_movimento_automatico_sem_modelo_vigente_nao_move(rig: Rig) -> None:
+    set_settings(rig.db, automation_mode="auto")
+
+    await rig.handler.run(_ctx(rig.item.id, mode="auto"))
+
+    assert rig.graph.moves == []
+
+
+@pytest.mark.asyncio
+async def test_movimento_automatico_ignora_item_com_rotulo_do_utilizador(rig: Rig) -> None:
+    enable_auto_mode(rig.db, rig.item.id)
+    add_label(rig.db, rig.item.id, "screenshot")  # removível, mas decidido pelo utilizador
+
+    await rig.handler.run(_ctx(rig.item.id, mode="auto"))
+
+    assert rig.graph.moves == []
+    assert journal_count(rig.db) == 0
+    assert get_item(rig.db, rig.item.id).state == "SUGERIDO"
+
+
+@pytest.mark.asyncio
+async def test_movimento_automatico_respeita_o_limiar_atual(rig: Rig) -> None:
+    enable_auto_mode(rig.db, rig.item.id)
+    set_settings(rig.db, auto_threshold=0.995)  # 0,99 < limiar elevado depois da decisão
+
+    await rig.handler.run(_ctx(rig.item.id, mode="auto"))
+
+    assert rig.graph.moves == []
+
+
+@pytest.mark.asyncio
+async def test_movimento_automatico_ignora_predicao_de_modelo_antigo(rig: Rig) -> None:
+    enable_auto_mode(rig.db, rig.item.id)
+    new_current_model(rig.db)  # promovido depois; o item ainda não foi reclassificado
+
+    await rig.handler.run(_ctx(rig.item.id, mode="auto"))
+
+    assert rig.graph.moves == []
+
+
+@pytest.mark.asyncio
+async def test_movimento_automatico_nao_devolve_item_restaurado_pelo_utilizador(
+    rig: Rig,
+) -> None:
+    enable_auto_mode(rig.db, rig.item.id)
+    with UnitOfWork(rig.db.engine) as session:
+        entry = quarantine.create(
+            session,
+            item_id=rig.item.id,
+            original_parent_id=ORIGIN,
+            original_parent_path="/",
+            original_name="img.jpg",
+            quarantined_name="img.jpg",
+            mode="auto",
+            now=stamp(BASE),
+        )
+        quarantine.mark_restored(
+            session, entry.id, reason="manual", fallback=False, now=stamp(BASE)
+        )
+
+    await rig.handler.run(_ctx(rig.item.id, mode="auto"))
+
+    assert rig.graph.moves == []
+
+
+@pytest.mark.asyncio
+async def test_movimento_manual_nao_exige_gate_nem_limiar(rig: Rig) -> None:
+    predict(rig.db, rig.item.id, "screenshot", new_current_model(rig.db), confidence=0.5)
+
+    await rig.handler.run(_ctx(rig.item.id))
+
+    assert get_item(rig.db, rig.item.id).state == "QUARENTENA"

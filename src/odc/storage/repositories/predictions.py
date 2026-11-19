@@ -160,6 +160,18 @@ def get_by_item(session: Session, item_id: int) -> PredictionRow | None:
     return None if row is None else to_dto(PredictionRow, row)
 
 
+def get_many(session: Session, item_ids: Sequence[int]) -> dict[int, PredictionRow]:
+    """Predições vigentes dos itens informados (ausentes ficam de fora), em blocos."""
+    found: dict[int, PredictionRow] = {}
+    unique = list(dict.fromkeys(item_ids))
+    for start in range(0, len(unique), _CHUNK):
+        stmt = select(*_COLUMNS).where(prediction.c.item_id.in_(unique[start : start + _CHUNK]))
+        for row in session.execute(stmt):
+            dto = to_dto(PredictionRow, row)
+            found[dto.item_id] = dto
+    return found
+
+
 def delete_for_items(session: Session, item_ids: Sequence[int]) -> int:
     """Remove as predições vigentes dos itens (voltaram a `DESCOBERTO`); devolve a quantidade."""
     removed = 0

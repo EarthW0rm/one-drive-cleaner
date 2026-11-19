@@ -24,3 +24,10 @@ def test_chave_desconhecida_e_rejeitada(session: Session) -> None:
         app_meta.set_value(session, "qualquer", "x")
     with pytest.raises(StorageValidationError):
         app_meta.get(session, "qualquer")
+
+
+def test_chaves_do_alerta_da_rn27_sao_aceitas(session: Session) -> None:
+    app_meta.set_value(session, "auto_move_capped_at", "2026-11-18T09:00:00+00:00")
+    app_meta.set_value(session, "auto_move_capped_count", "7")
+
+    assert app_meta.get(session, "auto_move_capped_count") == "7"

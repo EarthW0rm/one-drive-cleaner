@@ -37,7 +37,7 @@ from odc.jobs.payloads import (
 from odc.jobs.types import DEFAULT_PRIORITY, JobType, PauseReason
 from odc.storage.dto import JobRow
 from odc.storage.errors import StorageValidationError
-from odc.storage.repositories import jobs, journal
+from odc.storage.repositories import jobs, journal, models
 from odc.storage.uow import UnitOfWork
 from odc.telemetry.metrics import JobResult, Metrics
 from odc.telemetry.metrics import JobType as MetricsJobType
@@ -266,6 +266,42 @@ class JobQueue:
         """Enfileira `auto_actions` para o modelo vigente recém-promovido (ou reconfigurado)."""
         return self.enqueue(
             JobType.AUTO_ACTIONS, AutoActionsPayload(model_version_id=model_version_id)
+        )
+
+    def enqueue_auto_actions_for_current(self) -> int | None:
+        """Fim de uma análise (`classify` concluído): ações automáticas do modelo vigente (J4).
+
+        Não enfileira sem modelo vigente, enquanto outra classificação estiver ativa (a
+        conclusão dela dispara a rodada) ou se já há `auto_actions` do vigente aguardando
+        (`queued`/`paused`). Um `auto_actions` em execução não conta: ele pode ter adiado a
+        rodada por causa da classificação que acabou de terminar.
+        """
+        with UnitOfWork(self._database.engine, write=False) as session:
+            current = models.current(session)
+            if current is None or jobs.has_active(session, JobType.CLASSIFY.value):
+                return None
+            payload = AutoActionsPayload(model_version_id=current.id)
+            if jobs.has_waiting(
+                session, JobType.AUTO_ACTIONS.value, payload=payload.model_dump(mode="json")
+            ):
+                return None
+        return self.enqueue(JobType.AUTO_ACTIONS, payload)
+
+    def classification_pending(self) -> bool:
+        """Há `classify` ativo: as predições ainda não refletem o modelo/acervo atuais."""
+        return self.exists_active(JobType.CLASSIFY)
+
+    def pending_action_item_ids(self, operation: str, mode: str | None = None) -> frozenset[int]:
+        """Itens cobertos por jobs `move`/`restore` ativos (de `mode`, quando informado)."""
+        job_type = _ACTION_TYPES.get(operation)
+        if job_type is None or job_type is JobType.DELETE:
+            return frozenset()
+        return frozenset(
+            item_id
+            for payload in self.active_payloads(job_type)
+            if isinstance(payload, MovePayload | RestorePayload)
+            and (mode is None or (isinstance(payload, MovePayload) and payload.mode == mode))
+            for item_id in payload.item_ids
         )
 
     # --- Ações sobre a quarentena (reconciliação do diário) ---

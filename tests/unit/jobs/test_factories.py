@@ -17,6 +17,7 @@ from odc.jobs.errors import FatalJobError, PauseError, RetryableError
 from odc.jobs.factories import (
     HANDLER_FACTORIES,
     _ExtractJobHandler,
+    auto_actions_handler,
     cleanup_handler,
     delete_handler,
     extract_handler,
@@ -30,6 +31,7 @@ from odc.jobs.payloads import DeletePayload
 from odc.jobs.queue import JobQueue
 from odc.jobs.types import JobType, PauseReason
 from odc.ml.errors import InvalidModelError, ModelMismatchError
+from odc.quarantine.auto_actions_handler import AutoActionsHandler
 from odc.quarantine.confirmation import ConfirmationStore
 from odc.quarantine.move import MoveHandler
 from odc.quarantine.reconciler import ReconcileHandler
@@ -340,3 +342,25 @@ async def test_adaptador_de_ml_traduz_erros(
         await handler.run(FakeContext())  # type: ignore[arg-type]
 
     assert caught.value.error_code == code  # type: ignore[attr-defined]
+
+
+def test_fabrica_de_auto_actions_exige_cliente_da_graph(deps_without_graph: HandlerDeps) -> None:
+    assert auto_actions_handler(deps_without_graph) is None
+
+
+def test_fabrica_de_auto_actions_monta_o_handler_com_a_graph(
+    deps_without_graph: HandlerDeps, graph: GraphClient
+) -> None:
+    deps = HandlerDeps(
+        database=deps_without_graph.database,
+        queue=deps_without_graph.queue,
+        graph=graph,
+        metrics=None,
+        tracer=None,
+    )
+
+    assert isinstance(auto_actions_handler(deps), AutoActionsHandler)
+
+
+def test_registro_padrao_inclui_as_acoes_automaticas() -> None:
+    assert HANDLER_FACTORIES[JobType.AUTO_ACTIONS] is auto_actions_handler

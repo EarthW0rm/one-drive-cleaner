@@ -8,12 +8,14 @@ from odc.cleanup.service import CleanupService
 from odc.jobs.errors import PauseError
 from odc.jobs.followups import JobFollowUps
 from odc.jobs.handler import JobContext
-from odc.jobs.payloads import CleanupPayload, ExtractPayload
+from odc.jobs.payloads import AutoActionsPayload, CleanupPayload, ExtractPayload
 from odc.jobs.queue import ClaimedJob, JobQueue
 from odc.jobs.resumer import JobResumer
 from odc.jobs.runner import Decision, JobRunner, Outcome
 from odc.jobs.types import JobType, PauseReason
 from odc.storage.dto import JobRow
+from odc.storage.repositories import models as models_repo
+from odc.storage.uow import UnitOfWork
 from tests.unit.jobs.conftest import EngineHolder
 from tests.unit.jobs.support import Telemetry, handler, wait_until
 
@@ -167,3 +169,31 @@ async def test_ciclo_completo_pausa_por_teto_limpa_e_retoma(
 
 def _missing() -> JobRow:
     raise AssertionError("job inexistente")
+
+
+@pytest.mark.asyncio
+async def test_classify_concluido_aciona_as_acoes_automaticas_do_vigente(
+    queue: JobQueue, holder: EngineHolder
+) -> None:
+    with UnitOfWork(holder.engine) as session:
+        version = models_repo.create_candidate(
+            session,
+            strategy="zero_shot",
+            embedding_model_id=1,
+            labels_count=0,
+            categories=["a"],
+            params=b"",
+            metrics=None,
+            trigger="bootstrap",
+            now="2026-11-18T00:00:00+00:00",
+        )
+        models_repo.promote(session, version.id)
+    followups = JobFollowUps(queue)
+
+    await followups(_claimed(JobType.CLASSIFY), Decision(Outcome.DONE))
+    await followups(_claimed(JobType.CLASSIFY), Decision(Outcome.DONE))
+    await followups(_claimed(JobType.CLASSIFY), Decision(Outcome.FAILED))
+
+    assert queue.active_payloads(JobType.AUTO_ACTIONS) == [
+        AutoActionsPayload(model_version_id=version.id)
+    ]

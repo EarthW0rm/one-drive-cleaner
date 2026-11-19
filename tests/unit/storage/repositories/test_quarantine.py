@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from odc.storage.dto import ItemRow, QuarantineEntryRow
 from odc.storage.errors import ConflictError, NotFoundError, StorageValidationError
-from odc.storage.repositories import quarantine
+from odc.storage.repositories import items, quarantine
 
 ItemFactory = Callable[[str], ItemRow]
 NOW = "2026-11-17T10:00:00+00:00"
@@ -105,3 +105,43 @@ def test_transicao_so_a_partir_de_active(session: Session, make_item: ItemFactor
         quarantine.mark_external_removed(session, created.id)
     with pytest.raises(NotFoundError):
         quarantine.mark_deleted(session, 999, now=NOW)
+
+
+def test_active_outside_folder_lista_itens_em_quarentena_fora_da_pasta(
+    session: Session, make_item: ItemFactory
+) -> None:
+    inside, outside, other_state, closed = (make_item("QUARENTENA") for _ in range(4))
+    items.set_location(session, inside.id, parent_id="q-new", name="a.jpg", now=NOW)
+    items.set_state(session, other_state.id, "RESTAURADO", now=NOW)
+    entries = {row.id: _entry(session, row.id) for row in (inside, outside, other_state, closed)}
+    quarantine.mark_deleted(session, entries[closed.id].id, now=LATER)
+
+    found = quarantine.active_outside_folder(session, "q-new", limit=10)
+
+    assert [row.item_id for row in found] == [outside.id]
+    after = quarantine.active_outside_folder(
+        session, "q-new", limit=10, after_id=entries[outside.id].id
+    )
+    assert after == []
+
+
+def test_left_by_user_item_ids(
+    session: Session, make_item: ItemFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(quarantine, "_CHUNK", 2)
+    rows = [make_item("SUGERIDO") for _ in range(6)]
+    entries = [_entry(session, row.id) for row in rows]
+    quarantine.mark_external_removed(session, entries[0].id)
+    quarantine.mark_restored(
+        session, entries[1].id, reason="false_positive", fallback=False, now=LATER
+    )
+    quarantine.mark_restored(session, entries[2].id, reason="manual", fallback=True, now=LATER)
+    quarantine.mark_restored(
+        session, entries[3].id, reason="reclassified", fallback=False, now=LATER
+    )
+    quarantine.mark_deleted(session, entries[4].id, now=LATER)
+
+    found = quarantine.left_by_user_item_ids(session, [row.id for row in rows])
+
+    assert found == {rows[0].id, rows[1].id, rows[2].id}
+    assert quarantine.left_by_user_item_ids(session, []) == frozenset()

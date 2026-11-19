@@ -31,7 +31,13 @@ from tests.fakes.faults import fail_network
 from tests.fakes.graph_fake import GraphFake
 from tests.fakes.graph_state import FakeDrive, FakeItem
 from tests.unit.jobs.support import Telemetry, wait_until
-from tests.unit.quarantine.support import active_entry, classify_item, entries
+from tests.unit.quarantine.support import (
+    active_entry,
+    classify_item,
+    entries,
+    new_current_model,
+    predict,
+)
 from tests.unit.scanning.support import Database, add_root, item, migrated, states
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -393,6 +399,8 @@ async def test_restaurar_repetido_nao_move_de_novo(nested: _Flow) -> None:
 async def test_queda_de_rede_na_restauracao_reconcilia_antes_de_repetir(nested: _Flow) -> None:
     _suggest(nested)
     await _run_move(nested, ["ano"])
+    # RN-17: o modelo vigente passou a prever "Foto real" (não removível) para o item.
+    predict(nested.db, nested.db_id("ano"), "real_photo", new_current_model(nested.db))
     nested.fake.faults.add(fail_network(GraphOperation.MOVE, times=5))
 
     job_id = await _run_restore(nested, ["ano"], "reclassified", expected="paused")

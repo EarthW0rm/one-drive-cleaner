@@ -18,6 +18,12 @@ demais:
    `QUARENTENA`, nova localização) na mesma transação; 404 → `failed(ITEM_NOT_FOUND)` +
    `REMOVIDO_EXTERNAMENTE`.
 
+Movimento automático (`mode=auto`, RN-14..RN-16): o gate é reavaliado na execução — modo
+efetivo diferente de `auto` (gate perdido, utilizador voltou ao Manual) ou sem modelo vigente
+→ nenhum item é movido; por item, além da política, exige a regra do comportamento Automático
+(`auto_move_allowed`: `SUGERIDO`, sem rótulo do utilizador, predição do modelo vigente com
+`confidence >= limiar` atual) e que o utilizador não tenha tirado o item da quarentena antes.
+
 Falha ambígua da Graph (indisponível, rede, login) NÃO vira `failed`: a intenção fica pendente,
 a exceção propaga ao runner (pausa/retry) e a reconciliação a resolve antes da próxima
 tentativa. Erro definitivo (4xx) ou de banco num item é contado e não interrompe os demais.
@@ -43,6 +49,8 @@ from pydantic import BaseModel, ConfigDict
 
 from odc.graph.errors import GraphClientError, GraphConflict, GraphNotFound
 from odc.graph.models import DriveItem, ParentReference
+from odc.ml.gate import load_gate_status
+from odc.quarantine.automation import AutoPolicy, auto_move_allowed
 from odc.quarantine.journal import (
     EngineSource,
     Journal,
@@ -60,7 +68,18 @@ from odc.quarantine.policy import BlockReason, can_quarantine
 from odc.quarantine.reconciler import ITEM_NOT_FOUND, FolderEnsurer, ReconcileReport
 from odc.storage.dto import CategoryRow, ItemRow, LabelRow, PredictionRow
 from odc.storage.errors import StorageError
-from odc.storage.repositories import categories, features, items, journal, labels, predictions
+from odc.storage.repositories import (
+    categories,
+    features,
+    items,
+    journal,
+    labels,
+    models,
+    predictions,
+    quarantine,
+)
+from odc.storage.repositories import settings as settings_repo
+from odc.storage.repositories.settings import SettingsModel
 from odc.storage.uow import UnitOfWork
 from odc.telemetry.metrics import ActionResult, Metrics
 from odc.telemetry.metrics import QuarantineMode as MetricMode
@@ -150,6 +169,7 @@ class _Snapshot:
     label: LabelRow | None
     prediction: PredictionRow | None
     categories: Mapping[int, CategoryRow]
+    left_by_user: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +236,20 @@ class MoveHandler:
         report = MoveReport()
         with self._tracer.start_as_current_span(MOVE_SPAN) as span:
             span.set_attribute("odc.action.mode", request.mode)
+            policy: AutoPolicy | None = None
+            if request.mode == "auto":
+                policy = await asyncio.to_thread(self._auto_policy)
+                if policy is None:  # gate perdido entre a decisão e a execução: nada se move
+                    report.skipped = len(item_ids)
+                    span.set_attributes({"odc.action.result": "skipped", "odc.action.moved": 0})
+                    logger.info(
+                        "movimento automático ignorado: modo efetivo não é automático",
+                        extra={
+                            "event.name": "quarantine.auto_move_skipped",
+                            "count": len(item_ids),
+                        },
+                    )
+                    return
             ids = await self._folders.ensure()
             blocked_by_pending = await self._reconcile(ctx, item_ids)
             for item_id in item_ids:
@@ -223,7 +257,9 @@ class MoveHandler:
                 if item_id in blocked_by_pending:
                     report.count(Outcome.SKIPPED)
                     continue
-                outcome = await self._move_isolated(item_id, ids.quarantine_id, request.mode)
+                outcome = await self._move_isolated(
+                    item_id, ids.quarantine_id, request.mode, policy
+                )
                 report.count(outcome)
                 self._record(request.mode, outcome)
             span.set_attributes(
@@ -248,10 +284,10 @@ class MoveHandler:
     # --- Por item ---
 
     async def _move_isolated(
-        self, item_id: int, quarantine_id: str, mode: QuarantineMode
+        self, item_id: int, quarantine_id: str, mode: QuarantineMode, policy: AutoPolicy | None
     ) -> Outcome:
         try:
-            return await self._move_one(item_id, quarantine_id, mode)
+            return await self._move_one(item_id, quarantine_id, mode, policy)
         except (JournalError, StorageError) as error:
             # A intenção (se gravada) segue pendente para a reconciliação.
             logger.error(
@@ -263,7 +299,9 @@ class MoveHandler:
             )
             return Outcome.FAILED
 
-    async def _move_one(self, item_id: int, quarantine_id: str, mode: QuarantineMode) -> Outcome:
+    async def _move_one(
+        self, item_id: int, quarantine_id: str, mode: QuarantineMode, policy: AutoPolicy | None
+    ) -> Outcome:
         snapshot = await asyncio.to_thread(self._load, item_id)
         if snapshot is None:
             return Outcome.SKIPPED
@@ -272,6 +310,8 @@ class MoveHandler:
         if not decision.allowed:
             wrong_state = decision.reason is BlockReason.WRONG_STATE
             return Outcome.SKIPPED if wrong_state else Outcome.BLOCKED
+        if policy is not None and not _auto_allowed(snapshot, policy):
+            return Outcome.SKIPPED
         inspected = await self._inspect(item, quarantine_id)
         if isinstance(inspected, Outcome):
             return inspected
@@ -391,6 +431,15 @@ class MoveHandler:
     def _now(self) -> str:
         return stamp(self._clock())
 
+    def _auto_policy(self) -> AutoPolicy | None:
+        """Limiar e modelo vigentes se o modo efetivo atual é `auto`; senão `None`."""
+        with UnitOfWork(self._database.engine, write=False) as session:
+            current = models.current(session)
+            if current is None or load_gate_status(session).effective_mode != "auto":
+                return None
+            threshold = SettingsModel.model_validate(settings_repo.get_all(session)).auto_threshold
+        return AutoPolicy(threshold, current.id)
+
     def _pending(self, item_ids: list[int]) -> frozenset[int]:
         with UnitOfWork(self._database.engine, write=False) as session:
             return journal.pending_item_ids(session, item_ids)
@@ -404,8 +453,13 @@ class MoveHandler:
             prediction = predictions.get_by_item(session, item_id)
             wanted = {found.category_id for found in (label, prediction) if found is not None}
             known = {cid: categories.get(session, cid) for cid in wanted}
+            left = item_id in quarantine.left_by_user_item_ids(session, [item_id])
         return _Snapshot(
-            item, label, prediction, {cid: cat for cid, cat in known.items() if cat is not None}
+            item,
+            label,
+            prediction,
+            {cid: cat for cid, cat in known.items() if cat is not None},
+            left,
         )
 
     def _mark_gone(self, item_id: int) -> None:
@@ -417,6 +471,15 @@ class MoveHandler:
             features.delete_for_items(session, [item_id])
             predictions.delete_for_items(session, [item_id])
             items.reset_for_analysis(session, item_id, now=self._now())
+
+
+def _auto_allowed(snapshot: _Snapshot, policy: AutoPolicy) -> bool:
+    """Regra do comportamento Automático reavaliada na execução (Zero Trust)."""
+    if snapshot.left_by_user:
+        return False
+    return auto_move_allowed(
+        snapshot.item.state, snapshot.label, snapshot.prediction, snapshot.categories, policy
+    )
 
 
 __all__ = [

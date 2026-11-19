@@ -23,6 +23,10 @@ antes de agir. Por item, isolado dos demais:
    `done` + efeitos na mesma transação (`RESTAURADO`, entrada `restored` com motivo e flag de
    fallback, nova localização).
 
+Restauração automática (`reason=reclassified`, RN-17): a regra é reavaliada na execução (Zero
+Trust) com o modelo vigente; se o item deixou de se qualificar (ex.: o utilizador o rotulou como
+removível depois da decisão, RN-11), ele é ignorado sem tocar a Graph.
+
 O rótulo de correção (`quarantine_restore`) é gravado pela API antes do job (TF-155-07).
 Falha ambígua da Graph (indisponível, rede, login) NÃO vira `failed`: a intenção fica pendente, a
 exceção propaga ao runner e a reconciliação a resolve antes da próxima tentativa.
@@ -46,6 +50,7 @@ from pydantic import BaseModel, ConfigDict
 
 from odc.graph.errors import GraphClientError, GraphConflict, GraphNotFound
 from odc.graph.models import DriveItem
+from odc.quarantine.automation import auto_restore_allowed
 from odc.quarantine.folders import DRIVE_ROOT_ALIAS
 from odc.quarantine.journal import (
     CloseQuarantineEntry,
@@ -71,7 +76,15 @@ from odc.quarantine.move import (
 from odc.quarantine.reconciler import ITEM_NOT_FOUND, FolderEnsurer
 from odc.storage.dto import ItemRow, QuarantineEntryRow
 from odc.storage.errors import StorageError
-from odc.storage.repositories import items, journal, quarantine
+from odc.storage.repositories import (
+    categories,
+    items,
+    journal,
+    labels,
+    models,
+    predictions,
+    quarantine,
+)
 from odc.storage.uow import UnitOfWork
 from odc.telemetry.metrics import ActionResult, Metrics
 from odc.telemetry.metrics import RestoreReason as MetricReason
@@ -302,10 +315,11 @@ class RestoreHandler:
         snapshot = await asyncio.to_thread(self._load, item_id)
         if snapshot is None:
             return _Result(Outcome.SKIPPED)
-        item, entry = snapshot.item, snapshot.entry
-        if entry is None or item.state != "QUARENTENA":
-            await self._reject(item, entry, restored_id, reason)
-            return _Result(Outcome.FAILED)
+        item = snapshot.item
+        checked = await self._precheck(item, snapshot.entry, restored_id, reason)
+        if isinstance(checked, _Result):
+            return checked
+        entry = checked
         observed = await self._inspect(item, entry)
         if isinstance(observed, Outcome):
             return _Result(observed)
@@ -320,6 +334,22 @@ class RestoreHandler:
                 return _result(attempt, fallback=False)
         # Recriação impossível (RN-19): `Restaurados`, marcado como fallback.
         return _result(await self._attempt(plan, restored_id, fallback=True), fallback=True)
+
+    async def _precheck(
+        self,
+        item: ItemRow,
+        entry: QuarantineEntryRow | None,
+        restored_id: str,
+        reason: RestoreReason,
+    ) -> QuarantineEntryRow | _Result:
+        """Entrada ativa a restaurar, ou o desfecho antecipado (sem Graph): fora da quarentena
+        ou RN-17 que deixou de valer."""
+        if entry is None or item.state != "QUARENTENA":
+            await self._reject(item, entry, restored_id, reason)
+            return _Result(Outcome.FAILED)
+        if reason == "reclassified" and not await asyncio.to_thread(self._still_qualifies, item.id):
+            return _Result(Outcome.SKIPPED)
+        return entry
 
     async def _reject(
         self,
@@ -485,6 +515,19 @@ class RestoreHandler:
             if item is None:
                 return None
             return _Snapshot(item, quarantine.get_active_by_item(session, item_id))
+
+    def _still_qualifies(self, item_id: int) -> bool:
+        """RN-17 ainda vale para o item com o modelo vigente e o rótulo atual?"""
+        with UnitOfWork(self._database.engine, write=False) as session:
+            current = models.current(session)
+            if current is None:
+                return False
+            return auto_restore_allowed(
+                labels.current_by_item(session, [item_id]).get(item_id),
+                predictions.get_by_item(session, item_id),
+                {row.id: row for row in categories.list_all(session)},
+                current.id,
+            )
 
     def _mark_external(self, item_id: int, entry_id: int, where: _Observed | None) -> None:
         """Item sumiu ou saiu da quarentena por fora: entrada `external_removed` (RN-18)."""

@@ -406,3 +406,18 @@ def test_has_active_besides_ignora_o_proprio_job_e_status_terminal(session: Sess
     assert jobs.has_active_besides(session, "scan", mine.id) is False
     with pytest.raises(StorageValidationError):
         jobs.has_active_besides(session, "x", mine.id)
+
+
+def test_has_waiting_so_conta_queued_e_paused_com_o_mesmo_payload(session: Session) -> None:
+    payload = {"model_version_id": 3}
+    job = jobs.enqueue(session, job_type="auto_actions", payload=payload, now=T1)
+    assert jobs.has_waiting(session, "auto_actions", payload=payload) is True
+    assert jobs.has_waiting(session, "auto_actions", payload={"model_version_id": 4}) is False
+
+    jobs.set_status(session, job.id, "paused", now=T2, pause_reason="network")
+    assert jobs.has_waiting(session, "auto_actions", payload=payload) is True
+
+    jobs.set_status(session, job.id, "running", now=T2)
+    assert jobs.has_waiting(session, "auto_actions", payload=payload) is False
+    with pytest.raises(StorageValidationError):
+        jobs.has_waiting(session, "x", payload=payload)
