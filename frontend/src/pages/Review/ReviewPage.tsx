@@ -15,14 +15,16 @@ import {
 } from "antd";
 import { useMemo, useState, type ReactElement } from "react";
 
-import { CATEGORIES_KEY, useCategories } from "../../api/categories";
+import { CATEGORIES_KEY, useCategories, type CategoryModel } from "../../api/categories";
 import { ApiError } from "../../api/client";
 import { useSaveLabels, type LabelEntry, type LabelsResponse } from "../../api/labels";
 import { labelsSinceLastTraining, useModels } from "../../api/models";
+import { useMoveToQuarantine } from "../../api/quarantine";
 import {
   REVIEW_KEY,
   reviewKey,
   useReviewPage,
+  type ReviewItem,
   type ReviewOrder,
   type ReviewQuery,
   type ReviewResponse,
@@ -59,8 +61,47 @@ function plural(count: number, one: string, many: string): string {
   return count === 1 ? one : many;
 }
 
+/** IDs que o servidor recusou mover (`details.blocked_item_ids` do 422), se vierem no erro. */
+function blockedItemIds(error: unknown): readonly number[] | null {
+  if (!(error instanceof ApiError) || typeof error.details !== "object" || error.details === null) {
+    return null;
+  }
+  const ids = (error.details as { blocked_item_ids?: unknown }).blocked_item_ids;
+  return Array.isArray(ids) && ids.every((id) => typeof id === "number") ? ids : null;
+}
+
+const PROTECTED_MOVE_TEXT =
+  "A seleção contém itens de Foto real (categoria protegida): eles nunca vão para a quarentena.";
+const NOT_REMOVABLE_MOVE_TEXT =
+  "A seleção contém itens de categoria não removível: só categorias removíveis vão para a quarentena.";
+const CATEGORIES_MOVE_TEXT =
+  "Lista de categorias indisponível: não é possível verificar se a seleção pode ir para a quarentena.";
+
+/**
+ * Motivo pelo qual a seleção não pode ir para a quarentena (RN-09), ou `null` se pode.
+ * A categoria efetiva é o rótulo do utilizador, quando existe, senão a sugestão do modelo.
+ */
+function moveBlockReason(
+  selectedItems: readonly ReviewItem[],
+  categories: readonly CategoryModel[] | null | undefined,
+): string | null {
+  if (categories === null || categories === undefined) {
+    return CATEGORIES_MOVE_TEXT;
+  }
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  let notRemovable = false;
+  for (const item of selectedItems) {
+    const category = byId.get(item.user_category_id ?? item.suggested_category_id);
+    if (category?.protected === true) {
+      return PROTECTED_MOVE_TEXT;
+    }
+    notRemovable ||= category?.removable !== true;
+  }
+  return notRemovable ? NOT_REMOVABLE_MOVE_TEXT : null;
+}
+
 export function ReviewPage(): ReactElement {
-  const { message: messageApi, notification } = App.useApp();
+  const { message: messageApi, notification, modal } = App.useApp();
   const queryClient = useQueryClient();
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [order, setOrder] = useState<ReviewOrder>("uncertainty");
@@ -70,6 +111,7 @@ export function ReviewPage(): ReactElement {
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [focusedId, setFocusedId] = useState<number | null>(null);
   const [failedSave, setFailedSave] = useState<readonly LabelEntry[] | null>(null);
+  const [blockedMove, setBlockedMove] = useState<readonly number[] | null>(null);
 
   const query: ReviewQuery = {
     categoryId,
@@ -84,6 +126,7 @@ export function ReviewPage(): ReactElement {
   const models = useModels();
   const settings = useSettings();
   const saveLabels = useSaveLabels();
+  const moveToQuarantine = useMoveToQuarantine();
   const retrainEvery = settings.data?.retrain_every ?? DEFAULT_RETRAIN_EVERY;
 
   const activeCategories = useMemo(
@@ -104,6 +147,15 @@ export function ReviewPage(): ReactElement {
   const selectedOnPage = useMemo(
     () => new Set([...selected].filter((id) => pageIds.has(id))),
     [selected, pageIds],
+  );
+
+  const moveBlocked = useMemo(
+    () =>
+      moveBlockReason(
+        items.filter((item) => selectedOnPage.has(item.item_id)),
+        categories.data,
+      ),
+    [items, selectedOnPage, categories.data],
   );
 
   function resetPaging(): void {
@@ -184,6 +236,33 @@ export function ReviewPage(): ReactElement {
       return;
     }
     await advanceIfEmpty();
+  }
+
+  async function moveSelected(itemIds: readonly number[]): Promise<void> {
+    setBlockedMove(null);
+    try {
+      await moveToQuarantine.mutateAsync(itemIds);
+    } catch (error) {
+      setBlockedMove(blockedItemIds(error));
+      void messageApi.error(errorMessage(error));
+      return;
+    }
+    setSelected(new Set());
+    void messageApi.success(
+      `${String(itemIds.length)} ${plural(itemIds.length, "item enfileirado", "itens enfileirados")} para a quarentena. ${plural(itemIds.length, "Ele sai", "Eles saem")} da fila quando a movimentação terminar.`,
+    );
+  }
+
+  function requestMove(itemIds: readonly number[]): void {
+    const count = itemIds.length;
+    modal.confirm({
+      title: `Mover ${String(count)} ${plural(count, "item", "itens")} para a quarentena?`,
+      content:
+        "Os arquivos vão para a pasta Quarentena do OneDrive Cleaner e podem ser restaurados depois. Nada é excluído.",
+      okText: "Mover para a quarentena",
+      cancelText: "Cancelar",
+      onOk: () => moveSelected(itemIds),
+    });
   }
 
   function confirm(itemIds: readonly number[]): void {
@@ -297,6 +376,18 @@ export function ReviewPage(): ReactElement {
           }
         />
       )}
+      {blockedMove === null ? null : (
+        <Alert
+          type="error"
+          showIcon
+          closable={{
+            onClose: () => {
+              setBlockedMove(null);
+            },
+          }}
+          title={`O servidor bloqueou ${String(blockedMove.length)} ${plural(blockedMove.length, "item", "itens")} da movimentação: ${blockedMove.join(", ")}. Remova-os da seleção e tente de novo.`}
+        />
+      )}
       {review.isError ? (
         <Result
           status="error"
@@ -377,6 +468,15 @@ export function ReviewPage(): ReactElement {
                 }}
               />
               <Button
+                disabled={moveBlocked !== null || moveToQuarantine.isPending}
+                loading={moveToQuarantine.isPending}
+                onClick={() => {
+                  requestMove([...selectedOnPage]);
+                }}
+              >
+                Mover para quarentena
+              </Button>
+              <Button
                 onClick={() => {
                   setSelected(new Set());
                 }}
@@ -384,6 +484,11 @@ export function ReviewPage(): ReactElement {
                 Limpar seleção
               </Button>
             </Space>
+            {moveBlocked === null ? null : (
+              <Typography.Paragraph type="warning" role="status" style={{ margin: "8px 0 0" }}>
+                {moveBlocked}
+              </Typography.Paragraph>
+            )}
           </Card>
         </Affix>
       ) : null}

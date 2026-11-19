@@ -8,7 +8,9 @@ import { describe, expect, it } from "vitest";
 
 import { createQueryClient } from "../../api/queryClient";
 import { errorResponse, sessionHandler, TEST_ORIGIN } from "../../test/handlers";
+import { quarantineApiHandlers, type QuarantineApi } from "../../test/quarantine-fixtures";
 import {
+  CATEGORIES,
   reviewApiHandlers,
   reviewItem,
   type ReviewApi,
@@ -541,5 +543,228 @@ describe("ReviewPage: configurações", () => {
     );
 
     expect(await screen.findByText("15 / 30")).toBeInTheDocument();
+  });
+});
+
+describe("ReviewPage: mover para a quarentena", () => {
+  function setupMove(
+    options: ReviewApiOptions = {},
+    ...overrides: Parameters<typeof server.use>
+  ): { review: ReviewApi; quarantine: QuarantineApi } {
+    const quarantine = quarantineApiHandlers();
+    const review = setup(options, ...overrides, ...quarantine.handlers);
+    return { review, quarantine: quarantine.api };
+  }
+
+  const MOVE = "Mover para quarentena";
+
+  async function confirmMove(): Promise<void> {
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Mover para a quarentena" }));
+  }
+
+  it("confirma e envia os itens selecionados de categorias removíveis", async () => {
+    const { quarantine } = setupMove();
+    await loaded();
+    await selectItems(2, 3);
+
+    await userEvent.click(screen.getByRole("button", { name: MOVE }));
+    expect(
+      within(await screen.findByRole("dialog")).getAllByText("Mover 2 itens para a quarentena?"),
+    ).not.toHaveLength(0);
+    expect(quarantine.moveBodies).toHaveLength(0);
+    await confirmMove();
+
+    await waitFor(() => {
+      expect(quarantine.moveBodies).toEqual([{ item_ids: [2, 3] }]);
+    });
+    expect(await screen.findByText(/2 itens enfileirados para a quarentena/)).toBeInTheDocument();
+    expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+  });
+
+  it("singulariza a confirmação e a mensagem com um item", async () => {
+    const { quarantine } = setupMove();
+    await loaded();
+    await selectItems(2);
+
+    await userEvent.click(screen.getByRole("button", { name: MOVE }));
+    expect(
+      within(await screen.findByRole("dialog")).getAllByText("Mover 1 item para a quarentena?"),
+    ).not.toHaveLength(0);
+    await confirmMove();
+
+    expect(await screen.findByText(/1 item enfileirado para a quarentena/)).toBeInTheDocument();
+    expect(quarantine.moveBodies).toHaveLength(1);
+  });
+
+  it("não envia nada quando o utilizador cancela a confirmação", async () => {
+    const { quarantine } = setupMove();
+    await loaded();
+    await selectItems(2);
+    await userEvent.click(screen.getByRole("button", { name: MOVE }));
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+
+    expect(quarantine.moveBodies).toHaveLength(0);
+    expect(screen.getByText("1 selecionado")).toBeInTheDocument();
+  });
+
+  it("desabilita a ação quando a seleção contém Foto real (RN-09)", async () => {
+    setupMove();
+    await loaded();
+
+    await selectItems(2, 1);
+
+    expect(screen.getByRole("button", { name: MOVE })).toBeDisabled();
+    expect(screen.getByText(/Foto real \(categoria protegida\)/)).toBeInTheDocument();
+  });
+
+  it("habilita de novo ao tirar o item de Foto real da seleção", async () => {
+    setupMove();
+    await loaded();
+    await selectItems(2, 1);
+
+    await selectItems(1);
+
+    expect(screen.getByRole("button", { name: MOVE })).toBeEnabled();
+    expect(screen.queryByText(/Foto real \(categoria protegida\)/)).not.toBeInTheDocument();
+  });
+
+  it("considera o rótulo do utilizador acima da sugestão do modelo", async () => {
+    setupMove(
+      {},
+      http.get(`${TEST_ORIGIN}/api/review`, () =>
+        HttpResponse.json({
+          items: [reviewItem(2, { user_category_id: 1 }), reviewItem(3)],
+          next_cursor: null,
+        }),
+      ),
+    );
+    await screen.findByLabelText(/^Item 2:/);
+
+    await selectItems(2);
+
+    expect(screen.getByRole("button", { name: MOVE })).toBeDisabled();
+  });
+
+  it("desabilita a ação para categoria não removível que não é a protegida", async () => {
+    const categories = CATEGORIES.map((category) =>
+      category.id === PRINT ? { ...category, removable: false } : category,
+    );
+    setupMove({ categories });
+    await loaded();
+
+    await selectItems(2);
+
+    expect(screen.getByRole("button", { name: MOVE })).toBeDisabled();
+    expect(screen.getByText(/categoria não removível/)).toBeInTheDocument();
+  });
+
+  it("desabilita a ação quando a lista de categorias não carrega", async () => {
+    setupMove({ categories: null });
+    await loaded();
+
+    await selectItems(2);
+
+    expect(screen.getByRole("button", { name: MOVE })).toBeDisabled();
+    expect(
+      screen.getByText(/verificar se a seleção pode ir para a quarentena/),
+    ).toBeInTheDocument();
+  });
+
+  it("lista os IDs bloqueados devolvidos em 422 e mantém a seleção", async () => {
+    setupMove(
+      {},
+      http.post(`${TEST_ORIGIN}/api/quarantine/moves`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "PROTECTED_CATEGORY",
+              message: "bloqueado",
+              details: { blocked_item_ids: [3] },
+            },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    await loaded();
+    await selectItems(2, 3);
+    await userEvent.click(screen.getByRole("button", { name: MOVE }));
+
+    await confirmMove();
+
+    expect(
+      await screen.findByText(/O servidor bloqueou 1 item da movimentação: 3\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 selecionados")).toBeInTheDocument();
+  });
+
+  it("mostra erro sem lista de bloqueados quando a movimentação falha por outro motivo", async () => {
+    setupMove(
+      {},
+      http.post(`${TEST_ORIGIN}/api/quarantine/moves`, () => errorResponse("INTERNAL", "x", 500)),
+    );
+    await loaded();
+    await selectItems(2);
+    await userEvent.click(screen.getByRole("button", { name: MOVE }));
+
+    await confirmMove();
+
+    expect(await screen.findByText(/Ocorreu um erro interno/)).toBeInTheDocument();
+    expect(screen.queryByText(/O servidor bloqueou/)).not.toBeInTheDocument();
+    expect(screen.getByText("1 selecionado")).toBeInTheDocument();
+  });
+
+  it("ignora detalhes de erro que não trazem IDs numéricos", async () => {
+    setupMove(
+      {},
+      http.post(`${TEST_ORIGIN}/api/quarantine/moves`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "x",
+              details: { blocked_item_ids: ["a"] },
+            },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    await loaded();
+    await selectItems(2);
+    await userEvent.click(screen.getByRole("button", { name: MOVE }));
+
+    await confirmMove();
+
+    expect(await screen.findByText(/Os dados informados são inválidos/)).toBeInTheDocument();
+    expect(screen.queryByText(/O servidor bloqueou/)).not.toBeInTheDocument();
+  });
+
+  it("fecha o aviso de itens bloqueados", async () => {
+    setupMove(
+      {},
+      http.post(`${TEST_ORIGIN}/api/quarantine/moves`, () =>
+        HttpResponse.json(
+          {
+            error: { code: "VALIDATION_ERROR", message: "x", details: { blocked_item_ids: [2] } },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    await loaded();
+    await selectItems(2);
+    await userEvent.click(screen.getByRole("button", { name: MOVE }));
+    await confirmMove();
+    await screen.findByText(/O servidor bloqueou/);
+
+    await userEvent.click(screen.getByRole("button", { name: "close" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/O servidor bloqueou/)).not.toBeInTheDocument();
+    });
   });
 });

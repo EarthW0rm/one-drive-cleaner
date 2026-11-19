@@ -53,28 +53,37 @@ interface CardProps {
   readonly onImageError: (itemId: number) => void;
 }
 
-function Thumb({
+export interface ThumbProps {
+  readonly itemId: number;
+  readonly url: string | undefined;
+  readonly failed: boolean;
+  readonly onImageError: (itemId: number) => void;
+  /** Altura em px (padrão: a do card da grade). */
+  readonly height?: number;
+  readonly width?: number | string;
+}
+
+/** Miniatura com placeholder quando a URL falta ou falhou (reaproveitada pela Quarentena). */
+export function Thumb({
   itemId,
   url,
   failed,
   onImageError,
-}: Readonly<{
-  itemId: number;
-  url: string | undefined;
-  failed: boolean;
-  onImageError: (itemId: number) => void;
-}>): ReactElement {
+  height = THUMB_HEIGHT,
+  width = "100%",
+}: Readonly<ThumbProps>): ReactElement {
   if (url === undefined || failed) {
     return (
       <div
         role="img"
         aria-label="Miniatura indisponível"
         style={{
-          height: THUMB_HEIGHT,
+          height,
+          width,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 32,
+          fontSize: Math.min(32, height / 2),
         }}
       >
         <PictureOutlined />
@@ -85,8 +94,8 @@ function Thumb({
     <Image
       src={url}
       alt={`Miniatura do item ${String(itemId)}`}
-      height={THUMB_HEIGHT}
-      width="100%"
+      height={height}
+      width={width}
       style={{ objectFit: "cover" }}
       onError={() => {
         onImageError(itemId);

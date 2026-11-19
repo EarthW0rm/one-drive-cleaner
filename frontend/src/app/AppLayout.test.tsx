@@ -202,9 +202,9 @@ describe("AppLayout", () => {
 
   it("não redireciona quando a primeira configuração já foi concluída", async () => {
     server.use(sessionHandler(), ...onboardedHandlers());
-    renderApp("/quarentena");
+    renderApp("/metricas");
 
-    expect(await screen.findByRole("heading", { name: "Quarentena" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Métricas" })).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Primeira configuração" }),
     ).not.toBeInTheDocument();
