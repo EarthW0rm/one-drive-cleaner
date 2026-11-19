@@ -159,6 +159,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/metrics/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Metrics Summary */
+        get: operations["get_metrics_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/models": {
         parameters: {
             query?: never;
@@ -459,6 +476,25 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
+        /** AlertModel */
+        AlertModel: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "JOURNAL_PENDING" | "HIGH_FALSE_POSITIVE" | "TEMP_NEAR_CAP" | "LOGIN_REQUIRED" | "DISK_OVER_BUDGET" | "AUTO_MOVE_CAPPED";
+            /** Since */
+            since: string;
+        };
+        /** BacklogModel */
+        BacklogModel: {
+            /** Classify */
+            classify: number;
+            /** Extract */
+            extract: number;
+            /** Review */
+            review: number;
+        };
         /** CategoriesResponse */
         CategoriesResponse: {
             /** Categories */
@@ -529,6 +565,19 @@ export interface components {
             /** Item Ids */
             item_ids: number[];
         };
+        /** DiskModel */
+        DiskModel: {
+            /** Budget Bytes */
+            budget_bytes: number;
+            /** Db */
+            db: number;
+            /** Logs */
+            logs: number;
+            /** Model */
+            model: number;
+            /** Temp */
+            temp: number;
+        };
         /** ErrorBody */
         ErrorBody: {
             code: components["schemas"]["ErrorCode"];
@@ -566,6 +615,13 @@ export interface components {
             items: components["schemas"]["FailureModel"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** FalsePositiveRateModel */
+        FalsePositiveRateModel: {
+            /** Last 7D */
+            last_7d: number | null;
+            /** Total */
+            total: number | null;
         };
         /** FolderModel */
         FolderModel: {
@@ -669,6 +725,13 @@ export interface components {
             /** Item Id */
             item_id: number;
         };
+        /** LabelsModel */
+        LabelsModel: {
+            /** Since Last Training */
+            since_last_training: number;
+            /** Total */
+            total: number;
+        };
         /** LabelsRequest */
         LabelsRequest: {
             /** Labels */
@@ -680,6 +743,33 @@ export interface components {
             saved: number;
             /** Train Job Id */
             train_job_id: number | null;
+        };
+        /** MetricsSummaryResponse */
+        MetricsSummaryResponse: {
+            /** Alerts */
+            alerts: components["schemas"]["AlertModel"][];
+            backlog: components["schemas"]["BacklogModel"];
+            /** By State */
+            by_state: {
+                [key: string]: number;
+            };
+            disk: components["schemas"]["DiskModel"];
+            false_positive_rate: components["schemas"]["FalsePositiveRateModel"];
+            labels: components["schemas"]["LabelsModel"];
+            /** Models */
+            models: components["schemas"]["ModelPointModel"][];
+            quarantine: components["schemas"]["QuarantineSummaryModel"];
+        };
+        /** ModelPointModel */
+        ModelPointModel: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Removable Precision */
+            removable_precision: number | null;
+            /** Status */
+            status: string;
         };
         /** ModelVersionModel */
         ModelVersionModel: {
@@ -757,6 +847,20 @@ export interface components {
             total_bytes: number;
             /** Total Count */
             total_count: number;
+        };
+        /**
+         * QuarantineSummaryModel
+         * @description Itens e bytes ativos; `by_category` usa o id da categoria (`unclassified` sem categoria).
+         */
+        QuarantineSummaryModel: {
+            /** By Category */
+            by_category: {
+                [key: string]: number;
+            };
+            /** Bytes */
+            bytes: number;
+            /** Items */
+            items: number;
         };
         /** RestoreEntry */
         RestoreEntry: {
@@ -1621,6 +1725,62 @@ export interface operations {
                 };
             };
             /** @description Cursor inválido, item inexistente ou categoria arquivada/inexistente */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_metrics_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsSummaryResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requisição inválida */
             422: {
                 headers: {
                     [name: string]: unknown;

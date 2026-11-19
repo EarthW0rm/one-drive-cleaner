@@ -13,6 +13,7 @@ from odc.web.routes.auth import create_auth_router
 from odc.web.routes.categories import create_categories_router
 from odc.web.routes.folders import create_folders_router
 from odc.web.routes.jobs import create_jobs_router
+from odc.web.routes.metrics import create_metrics_router
 from odc.web.routes.models import create_models_router
 from odc.web.routes.quarantine import create_quarantine_router
 from odc.web.routes.review import create_review_router
@@ -74,6 +75,7 @@ def create_app(settings: AppSettings, services: AppServices) -> FastAPI:
     app.include_router(create_models_router(services))
     app.include_router(create_categories_router(services))
     app.include_router(create_quarantine_router(services))
+    app.include_router(create_metrics_router(services))
     app.include_router(_unknown_api_router())
     register_spa(app, services.static_dir)
     return app

@@ -251,3 +251,26 @@ def test_recent_restore_notices_so_fallback_ou_reclassified(
         (fallback.id, "false_positive", True),
     ]
     assert len(quarantine.recent_restore_notices(session, limit=1)) == 1
+
+
+def test_move_counts_total_e_por_janela(session: Session, make_item: ItemFactory) -> None:
+    entries = [_entry(session, make_item("SUGERIDO").id) for _ in range(3)]
+    quarantine.mark_restored(
+        session, entries[0].id, reason="false_positive", fallback=False, now=NOW
+    )
+    quarantine.mark_restored(session, entries[1].id, reason="manual", fallback=False, now=LATER)
+    recent = quarantine.create(
+        session,
+        item_id=make_item("SUGERIDO").id,
+        original_parent_id="p1",
+        original_parent_path="/a",
+        original_name="y",
+        quarantined_name="y",
+        mode="auto",
+        now=LATER,
+    )
+    quarantine.mark_restored(session, recent.id, reason="false_positive", fallback=False, now=LATER)
+
+    assert quarantine.move_counts(session) == (4, 2)
+    assert quarantine.move_counts(session, since=LATER) == (1, 1)
+    assert quarantine.move_counts(session, since="2027-01-01T00:00:00+00:00") == (0, 0)

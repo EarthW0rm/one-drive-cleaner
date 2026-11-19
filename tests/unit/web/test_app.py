@@ -41,6 +41,7 @@ def test_openapi_e_publicado_em_api_openapi_json(client: TestClient) -> None:
         "/api/quarantine/restores",
         "/api/quarantine/deletions/preview",
         "/api/quarantine/deletions",
+        "/api/metrics/summary",
     }
 
 

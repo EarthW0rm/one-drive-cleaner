@@ -14,6 +14,55 @@
         "title": "AccountInfo",
         "type": "object"
       },
+      "AlertModel": {
+        "properties": {
+          "code": {
+            "enum": [
+              "JOURNAL_PENDING",
+              "HIGH_FALSE_POSITIVE",
+              "TEMP_NEAR_CAP",
+              "LOGIN_REQUIRED",
+              "DISK_OVER_BUDGET",
+              "AUTO_MOVE_CAPPED"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "since"
+        ],
+        "title": "AlertModel",
+        "type": "object"
+      },
+      "BacklogModel": {
+        "properties": {
+          "classify": {
+            "title": "Classify",
+            "type": "integer"
+          },
+          "extract": {
+            "title": "Extract",
+            "type": "integer"
+          },
+          "review": {
+            "title": "Review",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "extract",
+          "classify",
+          "review"
+        ],
+        "title": "BacklogModel",
+        "type": "object"
+      },
       "CategoriesResponse": {
         "properties": {
           "categories": {
@@ -237,6 +286,39 @@
         "title": "DeletionRequest",
         "type": "object"
       },
+      "DiskModel": {
+        "properties": {
+          "budget_bytes": {
+            "title": "Budget Bytes",
+            "type": "integer"
+          },
+          "db": {
+            "title": "Db",
+            "type": "integer"
+          },
+          "logs": {
+            "title": "Logs",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "integer"
+          },
+          "temp": {
+            "title": "Temp",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "temp",
+          "db",
+          "model",
+          "logs",
+          "budget_bytes"
+        ],
+        "title": "DiskModel",
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -350,6 +432,38 @@
           "next_cursor"
         ],
         "title": "FailuresResponse",
+        "type": "object"
+      },
+      "FalsePositiveRateModel": {
+        "properties": {
+          "last_7d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last 7D"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "last_7d",
+          "total"
+        ],
+        "title": "FalsePositiveRateModel",
         "type": "object"
       },
       "FolderModel": {
@@ -623,6 +737,24 @@
         "title": "LabelEntry",
         "type": "object"
       },
+      "LabelsModel": {
+        "properties": {
+          "since_last_training": {
+            "title": "Since Last Training",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "since_last_training"
+        ],
+        "title": "LabelsModel",
+        "type": "object"
+      },
       "LabelsRequest": {
         "additionalProperties": false,
         "properties": {
@@ -665,6 +797,93 @@
           "train_job_id"
         ],
         "title": "LabelsResponse",
+        "type": "object"
+      },
+      "MetricsSummaryResponse": {
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertModel"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "backlog": {
+            "$ref": "#/components/schemas/BacklogModel"
+          },
+          "by_state": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By State",
+            "type": "object"
+          },
+          "disk": {
+            "$ref": "#/components/schemas/DiskModel"
+          },
+          "false_positive_rate": {
+            "$ref": "#/components/schemas/FalsePositiveRateModel"
+          },
+          "labels": {
+            "$ref": "#/components/schemas/LabelsModel"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelPointModel"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "quarantine": {
+            "$ref": "#/components/schemas/QuarantineSummaryModel"
+          }
+        },
+        "required": [
+          "by_state",
+          "backlog",
+          "quarantine",
+          "labels",
+          "false_positive_rate",
+          "disk",
+          "models",
+          "alerts"
+        ],
+        "title": "MetricsSummaryResponse",
+        "type": "object"
+      },
+      "ModelPointModel": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "removable_precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removable Precision"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "removable_precision",
+          "created_at"
+        ],
+        "title": "ModelPointModel",
         "type": "object"
       },
       "ModelVersionModel": {
@@ -921,6 +1140,33 @@
           "restore_notices"
         ],
         "title": "QuarantineResponse",
+        "type": "object"
+      },
+      "QuarantineSummaryModel": {
+        "description": "Itens e bytes ativos; `by_category` usa o id da categoria (`unclassified` sem categoria).",
+        "properties": {
+          "by_category": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Category",
+            "type": "object"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "bytes",
+          "by_category"
+        ],
+        "title": "QuarantineSummaryModel",
         "type": "object"
       },
       "RestoreEntry": {
@@ -2365,6 +2611,67 @@
         "summary": "Save Labels",
         "tags": [
           "review"
+        ]
+      }
+    },
+    "/api/metrics/summary": {
+      "get": {
+        "operationId": "get_metrics_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Requisição inválida"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Get Metrics Summary",
+        "tags": [
+          "metrics"
         ]
       }
     },

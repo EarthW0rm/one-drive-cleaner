@@ -39,6 +39,7 @@ def test_schema_contem_rotas_de_sistema() -> None:
         "/api/quarantine/restores",
         "/api/quarantine/deletions/preview",
         "/api/quarantine/deletions",
+        "/api/metrics/summary",
     }
 
 

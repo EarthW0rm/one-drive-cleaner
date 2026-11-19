@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     and_,
     exists,
+    func,
     insert,
     literal,
     or_,
@@ -148,6 +149,15 @@ def save_checkpoint(session: Session, job_id: int, checkpoint: Mapping[str, obje
 def _active_filter(job_type: str, payload_json: str | None) -> ColumnElement[bool]:
     clause = and_(job.c.type == job_type, job.c.status.in_(ACTIVE_STATUSES))
     return clause if payload_json is None else and_(clause, job.c.payload == payload_json)
+
+
+def paused_since(session: Session, reason: str) -> str | None:
+    """Instante mais antigo (heartbeat, início ou criação) dos jobs pausados pelo motivo."""
+    if reason not in PAUSE_REASONS:
+        raise StorageValidationError("motivo de pausa inválido")
+    stamp = func.coalesce(job.c.heartbeat_at, job.c.started_at, job.c.created_at)
+    stmt = select(func.min(stamp)).where(job.c.status == "paused", job.c.pause_reason == reason)
+    return session.execute(stmt).scalar_one_or_none()
 
 
 def has_active(

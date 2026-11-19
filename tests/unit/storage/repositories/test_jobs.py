@@ -421,3 +421,18 @@ def test_has_waiting_so_conta_queued_e_paused_com_o_mesmo_payload(session: Sessi
     assert jobs.has_waiting(session, "auto_actions", payload=payload) is False
     with pytest.raises(StorageValidationError):
         jobs.has_waiting(session, "x", payload=payload)
+
+
+def test_paused_since_devolve_o_mais_antigo_do_motivo(session: Session) -> None:
+    assert jobs.paused_since(session, "login_required") is None
+    older = jobs.enqueue(session, job_type="scan", payload={}, now=T1)
+    newer = jobs.enqueue(session, job_type="extract", payload={}, now=T2)
+    other = jobs.enqueue(session, job_type="classify", payload={}, now=T3)
+    jobs.pause(session, newer.id, reason="login_required")
+    jobs.pause(session, older.id, reason="login_required")
+    jobs.pause(session, other.id, reason="user")
+
+    assert jobs.paused_since(session, "login_required") == T1
+    assert jobs.paused_since(session, "temp_cap") is None
+    with pytest.raises(StorageValidationError):
+        jobs.paused_since(session, "x")

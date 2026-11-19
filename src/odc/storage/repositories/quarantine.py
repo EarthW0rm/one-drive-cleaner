@@ -88,6 +88,20 @@ def count_by_status(session: Session) -> dict[str, int]:
     return dict(session.execute(select(_T.c.status, func.count()).group_by(_T.c.status)).all())
 
 
+def move_counts(session: Session, *, since: str | None = None) -> tuple[int, int]:
+    """Itens movidos e restaurações por falso positivo (RN-11), opcionalmente desde `since`.
+
+    Movidos = entradas com `moved_at >= since`; falsos positivos = entradas restauradas com
+    `restore_reason='false_positive'` e `restored_at >= since` (sem `since`: todas).
+    """
+    moved = select(func.count()).select_from(_T)
+    flagged = select(func.count()).select_from(_T).where(_T.c.restore_reason == "false_positive")
+    if since is not None:
+        moved = moved.where(_T.c.moved_at >= since)
+        flagged = flagged.where(_T.c.restored_at >= since)
+    return int(session.execute(moved).scalar_one()), int(session.execute(flagged).scalar_one())
+
+
 def _transition(session: Session, entry_id: int, **values: object) -> None:
     """Só entradas `active` mudam de status (um registro encerrado não reabre)."""
     result = execute_dml(
