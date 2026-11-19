@@ -3,7 +3,7 @@
 # a suíte E2E (Playwright) é um projeto pnpm próprio em `e2e/` (plan 10.5).
 
 .PHONY: lint lint-python lint-frontend lint-e2e lint-repo test test-python test-frontend \
-	build-frontend contract test-integration test-resilience model-data test-model test-volume test-e2e test-all obs-up obs-down
+	build-frontend contract test-integration test-resilience test-telemetry model-data test-model test-volume test-e2e test-all obs-up obs-down
 
 FRONTEND_DIR := frontend
 E2E_DIR := e2e
@@ -59,6 +59,12 @@ test-integration:
 # extração, movimentação e restauração. Já faz parte de `test-integration` (mesmo marcador).
 test-resilience:
 	uv run pytest tests/resilience -m resilience --no-cov; $(PYTEST_EMPTY_OK)
+
+# Privacidade da telemetria ponta a ponta (RN-24, TF-157-05): jornada completa do `odc` com
+# exportadores em memória; falha se nomes, caminhos, ids, tokens, URLs ou e-mail aparecerem.
+# Já faz parte de `test-integration` (mesmo marcador).
+test-telemetry:
+	uv run pytest tests/telemetry -m integration --no-cov
 
 # Conjunto de referência CC0 do modelo (plan 10.3): baixa para tests/model/data/ (não versionado)
 # e verifica o SHA-256 de cada arquivo. Sem ele, os testes `model` de qualidade são pulados.
