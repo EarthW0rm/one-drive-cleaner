@@ -137,3 +137,54 @@ def test_prompts_invalidos_no_banco_levantam_validation_error(session: Session, 
 def test_update_fields_sem_alteracoes_em_categoria_inexistente(session: Session) -> None:
     with pytest.raises(NotFoundError):
         categories.update_fields(session, 999)
+
+
+def test_list_all_inclui_arquivadas(session: Session) -> None:
+    created = categories.create(
+        session,
+        slug="memes",
+        name="Memes",
+        description="d",
+        zero_shot_prompts=["a meme"],
+        removable=True,
+        now=NOW,
+    )
+    categories.archive(session, created.id, now=NOW)
+
+    all_slugs = {c.slug for c in categories.list_all(session)}
+
+    assert "memes" in all_slugs
+    assert "memes" not in {c.slug for c in categories.list_active(session)}
+
+
+def test_update_fields_altera_removable(session: Session) -> None:
+    created = categories.create(
+        session,
+        slug="memes",
+        name="Memes",
+        description="d",
+        zero_shot_prompts=["a meme"],
+        removable=True,
+        now=NOW,
+    )
+
+    updated = categories.update_fields(session, created.id, removable=False)
+
+    assert updated.removable is False
+
+
+def test_unarchive_reativa_e_inexistente_falha(session: Session) -> None:
+    created = categories.create(
+        session,
+        slug="memes",
+        name="Memes",
+        description="d",
+        zero_shot_prompts=["a meme"],
+        removable=True,
+        now=NOW,
+    )
+    categories.archive(session, created.id, now=NOW)
+
+    assert categories.unarchive(session, created.id).archived_at is None
+    with pytest.raises(NotFoundError):
+        categories.unarchive(session, 9999)

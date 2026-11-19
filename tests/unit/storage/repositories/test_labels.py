@@ -115,3 +115,18 @@ def test_count_labeled_items_conta_itens_distintos(
 
 def test_count_labeled_items_sem_rotulos_e_zero(session: Session) -> None:
     assert labels.count_labeled_items(session) == 0
+
+
+def test_current_counts_by_category_usa_so_o_rotulo_vigente(
+    session: Session, make_item: ItemFactory
+) -> None:
+    first, second = make_item("ANALISADO").id, make_item("ANALISADO").id
+    shot, real = _cat(session, "screenshot"), _cat(session, "real_photo")
+    labels.add_many(
+        session,
+        [LabelInput(first, shot, "review"), LabelInput(second, shot, "review")],
+        now=T1,
+    )
+    labels.add_many(session, [LabelInput(first, real, "review")], now=T2)
+
+    assert labels.current_counts_by_category(session) == {shot: 1, real: 1}

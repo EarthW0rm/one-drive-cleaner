@@ -32,6 +32,8 @@ def test_schema_contem_rotas_de_sistema() -> None:
         "/api/thumbnails",
         "/api/models",
         "/api/models/train",
+        "/api/categories",
+        "/api/categories/{category_id}",
     }
 
 

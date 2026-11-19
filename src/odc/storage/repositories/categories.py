@@ -40,6 +40,12 @@ def list_active(session: Session) -> Sequence[CategoryRow]:
     return [_row(r) for r in session.execute(stmt)]
 
 
+def list_all(session: Session) -> Sequence[CategoryRow]:
+    """Todas as categorias, inclusive arquivadas (rótulos históricos as referenciam)."""
+    stmt = select(*_COLUMNS).order_by(category.c.id)
+    return [_row(r) for r in session.execute(stmt)]
+
+
 def get(session: Session, category_id: int) -> CategoryRow | None:
     row = session.execute(select(*_COLUMNS).where(category.c.id == category_id)).first()
     return None if row is None else _row(row)
@@ -90,6 +96,7 @@ def update_fields(
     name: str | None = None,
     description: str | None = None,
     zero_shot_prompts: Sequence[str] | None = None,
+    removable: bool | None = None,
 ) -> CategoryRow:
     values: dict[str, object] = {}
     if name is not None:
@@ -98,6 +105,8 @@ def update_fields(
         values["description"] = description
     if zero_shot_prompts is not None:
         values["zero_shot_prompts"] = json.dumps(list(zero_shot_prompts))
+    if removable is not None:
+        values["removable"] = int(removable)
     if values:
         result = execute_dml(
             session, update(category).where(category.c.id == category_id).values(**values)
@@ -122,3 +131,16 @@ def archive(session: Session, category_id: int, *, now: str) -> CategoryRow:
     if archived is None:  # pragma: no cover - garantido pelo update acima
         raise NotFoundError("categoria inexistente")
     return archived
+
+
+def unarchive(session: Session, category_id: int) -> CategoryRow:
+    """Reativa uma categoria arquivada (idempotente)."""
+    result = execute_dml(
+        session, update(category).where(category.c.id == category_id).values(archived_at=None)
+    )
+    if result.rowcount == 0:
+        raise NotFoundError("categoria inexistente")
+    current = get(session, category_id)
+    if current is None:  # pragma: no cover - garantido pelo update acima
+        raise NotFoundError("categoria inexistente")
+    return current

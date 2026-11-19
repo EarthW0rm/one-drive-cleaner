@@ -94,3 +94,11 @@ def count_labeled_items(session: Session) -> int:
     """Itens com rótulo do utilizador (classificações vigentes; base do gate Evolutivo, RN-15)."""
     stmt = select(func.count(func.distinct(label.c.item_id)))
     return int(session.execute(stmt).scalar_one())
+
+
+def current_counts_by_category(session: Session) -> dict[int, int]:
+    """Rótulos vigentes (um por item) agrupados por categoria."""
+    counts: dict[int, int] = {}
+    for row in _current(session, None):
+        counts[row.category_id] = counts.get(row.category_id, 0) + 1
+    return counts
