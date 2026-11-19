@@ -1,20 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Contrato do embedder com os pesos reais do ViT-B-32 (fora de `make test`; marcador `model`).
 
-Os pesos vêm do cache local do Hugging Face (somente leitura, via symlink para um diretório
-temporário); sem cache, o teste é pulado, a menos que `ODC_MODEL_TEST_DOWNLOAD=1` autorize baixar
-~600 MB para o diretório temporário. Nunca usa `odc.paths` nem diretórios reais da aplicação.
+Pesos do cache local do Hugging Face (ver `tests.model.weights`); sem cache, o teste é pulado.
 """
 
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from odc.features.embedder import EmbedderOptions, OpenClipEmbedder
+from odc.features.embedder import OpenClipEmbedder
 from odc.telemetry.metrics import Device
+from tests.model.weights import DIM, make_embedder, prepare_weights_dir
 from tests.unit.features.embedder_contract import (
     assert_batch_equals_single,
     assert_deterministic,
@@ -25,39 +23,17 @@ from tests.unit.features.embedder_contract import (
 
 pytestmark = pytest.mark.model
 
-MODEL = "ViT-B-32"
-PRETRAINED = "laion2b_s34b_b79k"
-DIM = 512
-HF_ENTRY = "models--laion--CLIP-ViT-B-32-laion2B-s34B-b79K"
 MPS_COSINE = 0.999
-
-
-def _hf_hub_cache() -> Path:
-    hf_home = os.environ.get("HF_HOME")
-    base = Path(hf_home) if hf_home else Path.home() / ".cache" / "huggingface"
-    return Path(os.environ.get("HF_HUB_CACHE", base / "hub"))
 
 
 @pytest.fixture(scope="module")
 def weights_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    pytest.importorskip("open_clip")
-    target = tmp_path_factory.mktemp("models")
-    source = _hf_hub_cache() / HF_ENTRY
-    if source.is_dir():
-        (target / HF_ENTRY).symlink_to(source, target_is_directory=True)
-    elif os.environ.get("ODC_MODEL_TEST_DOWNLOAD") != "1":
-        pytest.skip("pesos ausentes do cache do Hugging Face (ODC_MODEL_TEST_DOWNLOAD=1 baixa)")
-    return target
-
-
-def _make(weights_dir: Path, device: str) -> OpenClipEmbedder:
-    options = EmbedderOptions(expected_dim=DIM, models_dir=lambda: weights_dir)
-    return OpenClipEmbedder(MODEL, PRETRAINED, device, options=options)
+    return prepare_weights_dir(tmp_path_factory.mktemp("models"))
 
 
 @pytest.fixture(scope="module")
 def embedder(weights_dir: Path) -> OpenClipEmbedder:
-    return _make(weights_dir, "auto")
+    return make_embedder(weights_dir, "auto")
 
 
 def _synthetic_images() -> list[Image.Image]:
@@ -105,10 +81,10 @@ def test_imagem_com_transparencia_e_processada(embedder: OpenClipEmbedder) -> No
 
 
 def test_mps_equivale_a_cpu(weights_dir: Path) -> None:
-    mps = _make(weights_dir, "mps")
+    mps = make_embedder(weights_dir, "mps")
     if mps.device is not Device.MPS:
         pytest.skip("MPS indisponível nesta máquina")
-    cpu = _make(weights_dir, "cpu")
+    cpu = make_embedder(weights_dir, "cpu")
     images = _synthetic_images()
 
     on_mps = mps.embed_images(images)

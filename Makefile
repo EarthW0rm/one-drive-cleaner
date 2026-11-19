@@ -3,7 +3,7 @@
 # `e2e/` ainda não existe (suíte E2E futura), então `test-e2e` é no-op com aviso até lá.
 
 .PHONY: lint lint-python lint-frontend lint-repo test test-python test-frontend \
-	build-frontend contract test-integration test-model test-e2e test-all obs-up obs-down
+	build-frontend contract test-integration model-data test-model test-e2e test-all obs-up obs-down
 
 FRONTEND_DIR := frontend
 # pytest sem testes coletados retorna 5; só é tolerado nas suítes vazias marcadas.
@@ -49,6 +49,11 @@ test: test-python test-frontend
 
 test-integration:
 	uv run pytest -m integration --no-cov tests; $(PYTEST_EMPTY_OK)
+
+# Conjunto de referência CC0 do modelo (plan 10.3): baixa para tests/model/data/ (não versionado)
+# e verifica o SHA-256 de cada arquivo. Sem ele, os testes `model` de qualidade são pulados.
+model-data:
+	uv run python tests/model/data_gen/download.py
 
 test-model:
 	uv run pytest -m "model or perf" --no-cov tests; $(PYTEST_EMPTY_OK)

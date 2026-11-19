@@ -6,6 +6,12 @@ numéricos simples, então carregar o modelo nunca executa código arbitrário (
 A padronização usa `scaler_mean`/`scaler_scale` só nas colunas de metadados; o embedding
 (L2-normalizado) entra como está. Classificação binária é guardada com 2 linhas
 (`[-w/2, +w/2]`), de modo que o softmax coincide com o sigmoide do scikit-learn.
+
+RN-10 (nome e origem nunca decidem sozinhos): com o vetor de metadados vigente, as features
+derivadas do nome/extensão (`NAME_DERIVED_FEATURES`) só ajustam a confiança. A categoria top-1
+é a que o modelo escolhe com essas features neutras (na média do treino, contribuição zero após
+a padronização); se o nome a mudaria, valem as probabilidades sem o nome. Assim, renomear um
+arquivo nunca troca a categoria prevista.
 """
 
 from dataclasses import dataclass
@@ -13,6 +19,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
+from odc.features.meta import FEATURE_NAMES, META_VERSION, NAME_DERIVED_FEATURES
 from odc.ml.errors import InvalidModelError
 from odc.ml.types import Prediction, predictions_from_probabilities
 
@@ -71,24 +78,43 @@ class LinearModel:
         """Dimensão do embedding esperada na entrada."""
         return int(self.coef.shape[1] - self.scaler_mean.shape[0])
 
-    def predict_proba(
-        self,
-        embeddings: npt.NDArray[np.float16] | npt.NDArray[np.float32],
-        meta_features: npt.NDArray[np.float32],
-    ) -> Floats:
-        """Probabilidades (N x K; linhas somam 1) na ordem de `classes`."""
-        emb = np.asarray(embeddings, dtype=np.float64)
-        meta = np.asarray(meta_features, dtype=np.float64)
-        if emb.ndim != 2 or emb.shape[1] != self.embedding_dim:  # noqa: PLR2004
-            raise InvalidModelError("embeddings com dimensão incompatível com o modelo")
-        if meta.ndim != 2 or meta.shape != (emb.shape[0], self.meta_dim):  # noqa: PLR2004
-            raise InvalidModelError("meta_features incompatíveis com o modelo")
+    @property
+    def name_columns(self) -> tuple[int, ...]:
+        """Colunas de metadados derivadas do nome (RN-10); vazio fora do vetor vigente."""
+        if self.meta_version != META_VERSION or self.meta_dim != len(FEATURE_NAMES):
+            return ()
+        return tuple(FEATURE_NAMES.index(name) for name in NAME_DERIVED_FEATURES)
+
+    def _probabilities(self, emb: Floats, meta: Floats) -> Floats:
         split = self.embedding_dim
         logits = emb @ self.coef[:, :split].T + self.intercept
         if self.meta_dim:
             scaled = (meta - self.scaler_mean) / self.scaler_scale
             logits = logits + scaled @ self.coef[:, split:].T
         return _softmax(np.asarray(logits, dtype=np.float64))
+
+    def predict_proba(
+        self,
+        embeddings: npt.NDArray[np.float16] | npt.NDArray[np.float32],
+        meta_features: npt.NDArray[np.float32],
+    ) -> Floats:
+        """Probabilidades (N x K; linhas somam 1) na ordem de `classes`, com a guarda RN-10."""
+        emb = np.asarray(embeddings, dtype=np.float64)
+        meta = np.asarray(meta_features, dtype=np.float64)
+        if emb.ndim != 2 or emb.shape[1] != self.embedding_dim:  # noqa: PLR2004
+            raise InvalidModelError("embeddings com dimensão incompatível com o modelo")
+        if meta.ndim != 2 or meta.shape != (emb.shape[0], self.meta_dim):  # noqa: PLR2004
+            raise InvalidModelError("meta_features incompatíveis com o modelo")
+        probs = self._probabilities(emb, meta)
+        columns = list(self.name_columns)
+        if not columns or probs.shape[0] == 0:
+            return probs
+        neutral = meta.copy()
+        neutral[:, columns] = self.scaler_mean[columns]
+        without_name = self._probabilities(emb, neutral)
+        changed = probs.argmax(axis=1) != without_name.argmax(axis=1)
+        probs[changed] = without_name[changed]
+        return probs
 
     def classify(
         self,

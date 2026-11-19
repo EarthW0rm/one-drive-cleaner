@@ -36,6 +36,16 @@ FEATURE_NAMES: Final[tuple[str, ...]] = (
     "bytes_per_pixel",
 )
 
+# Derivadas do nome e da extensão do arquivo (o MIME do OneDrive segue a extensão): podem só
+# ajustar a confiança, nunca decidir a categoria (RN-10; ver `odc.ml.linear_model`).
+NAME_DERIVED_FEATURES: Final[tuple[str, ...]] = (
+    "is_png",
+    "is_heic",
+    "name_screenshot",
+    "name_whatsapp",
+    "name_camera",
+)
+
 _HEIC_MIME_TYPES: Final = frozenset({"image/heic", "image/heif"})
 
 

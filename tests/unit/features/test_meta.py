@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from odc.features.meta import FEATURE_NAMES, META_VERSION, extract
+from odc.features.meta import FEATURE_NAMES, META_VERSION, NAME_DERIVED_FEATURES, extract
 from odc.storage.dto import ItemRow
 
 BASE = ItemRow(
@@ -74,6 +74,30 @@ class TestContract:
             "log_size_bytes",
             "bytes_per_pixel",
         )
+
+    def test_name_derived_features_are_the_name_and_extension_flags(self) -> None:
+        assert set(NAME_DERIVED_FEATURES) <= set(FEATURE_NAMES)
+        assert NAME_DERIVED_FEATURES == (
+            "is_png",
+            "is_heic",
+            "name_screenshot",
+            "name_whatsapp",
+            "name_camera",
+        )
+
+    def test_renaming_only_changes_name_derived_features(self) -> None:
+        renamed = replace(BASE, name="Screenshot_20240101-120000.png", mime_type="image/png")
+
+        changed = {
+            name
+            for name, before, after in zip(
+                FEATURE_NAMES, extract(BASE), extract(renamed), strict=True
+            )
+            if before != after
+        }
+
+        assert changed
+        assert changed <= set(NAME_DERIVED_FEATURES)
 
     def test_vector_is_float32_with_one_position_per_feature(self) -> None:
         vector = extract(BASE)
