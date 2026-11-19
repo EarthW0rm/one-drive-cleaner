@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol
 
 from sqlalchemy import Engine
+from sqlalchemy.orm import Session
 
 from odc.jobs.errors import ERROR_CODE_PATTERN, INVALID_PAYLOAD
 from odc.jobs.payloads import (
@@ -168,18 +169,32 @@ class JobQueue:
         `priority` padrão por tipo (`DEFAULT_PRIORITY`); `traceparent` padrão é o do span ativo
         (requisição de origem). `traceparent` fora do formato W3C é descartado.
         """
+        with self._write() as session:
+            return self.enqueue_in(
+                session, job_type, payload, priority=priority, traceparent=traceparent
+            )
+
+    def enqueue_in(
+        self,
+        session: Session,
+        job_type: JobType,
+        payload: Payload,
+        *,
+        priority: int | None = None,
+        traceparent: str | None = None,
+    ) -> int:
+        """Como `enqueue`, mas na transação do chamador (atômico com outras escritas)."""
         data, chosen_priority, chosen_trace = self._prepare(
             job_type, payload, priority, traceparent
         )
-        with self._write() as session:
-            created = jobs.enqueue(
-                session,
-                job_type=job_type.value,
-                payload=data,
-                now=self._now(),
-                priority=chosen_priority,
-                traceparent=chosen_trace,
-            )
+        created = jobs.enqueue(
+            session,
+            job_type=job_type.value,
+            payload=data,
+            now=self._now(),
+            priority=chosen_priority,
+            traceparent=chosen_trace,
+        )
         return created.id
 
     def enqueue_unique(

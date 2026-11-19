@@ -145,3 +145,109 @@ def test_left_by_user_item_ids(
 
     assert found == {rows[0].id, rows[1].id, rows[2].id}
     assert quarantine.left_by_user_item_ids(session, []) == frozenset()
+
+
+# --- listagem agrupada (US-155, J5) ---
+
+
+def _setup_model(session: Session) -> int:
+    from odc.storage.repositories import models  # noqa: PLC0415
+
+    session.connection().exec_driver_sql(
+        "INSERT OR REPLACE INTO embedding_model (id, name, dim, thumb_size, is_active) "
+        "VALUES (1, 'f', 4, 'c', 1)"
+    )
+    return models.create_candidate(
+        session,
+        strategy="logreg",
+        embedding_model_id=1,
+        labels_count=1,
+        categories=["a"],
+        params=b"",
+        metrics=None,
+        trigger="manual",
+        now=NOW,
+    ).id
+
+
+def _cat_id(session: Session, slug: str) -> int:
+    from odc.storage.repositories import categories  # noqa: PLC0415
+
+    found = categories.get_by_slug(session, slug)
+    assert found is not None
+    return found.id
+
+
+def _quarantined(session: Session, make_item: ItemFactory) -> ItemRow:
+    created = make_item("SUGERIDO")
+    _entry(session, created.id)
+    items.set_state(session, created.id, "QUARENTENA", now=NOW)
+    return created
+
+
+def test_active_page_categoria_efetiva_rotulo_vence_predicao(
+    session: Session, make_item: ItemFactory
+) -> None:
+    from odc.storage.repositories import labels, predictions  # noqa: PLC0415
+    from odc.storage.repositories.predictions import PredictionInput  # noqa: PLC0415
+
+    version = _setup_model(session)
+    shot, meme = _cat_id(session, "screenshot"), _cat_id(session, "meme_sticker")
+    first, second, third = (_quarantined(session, make_item) for _ in range(3))
+    predictions.replace_all(
+        session,
+        version,
+        [PredictionInput(first.id, shot, 0.9, 0.5), PredictionInput(second.id, shot, 0.9, 0.5)],
+        now=NOW,
+    )
+    labels.add_many(session, [labels.LabelInput(second.id, meme, "review")], now=NOW)
+
+    page = quarantine.active_page(session, category_id=None, before_id=None, limit=10)
+
+    assert [(r.item_id, r.category_id) for r in page] == [
+        (third.id, None),
+        (second.id, meme),
+        (first.id, shot),
+    ]
+    only_meme = quarantine.active_page(session, category_id=meme, before_id=None, limit=10)
+    assert [r.item_id for r in only_meme] == [second.id]
+    older = quarantine.active_page(session, category_id=None, before_id=page[1].entry_id, limit=5)
+    assert [r.item_id for r in older] == [first.id]
+    groups = quarantine.active_groups(session)
+    assert {(g.category_id, g.count, g.total_bytes) for g in groups} == {
+        (None, 1, 1000),
+        (meme, 1, 1000),
+        (shot, 1, 1000),
+    }
+
+
+def test_active_page_ignora_entradas_encerradas(session: Session, make_item: ItemFactory) -> None:
+    gone = _quarantined(session, make_item)
+    entry = quarantine.get_active_by_item(session, gone.id)
+    assert entry is not None
+    quarantine.mark_deleted(session, entry.id, now=LATER)
+
+    assert quarantine.active_page(session, category_id=None, before_id=None, limit=5) == []
+    assert quarantine.active_groups(session) == []
+
+
+def test_recent_restore_notices_so_fallback_ou_reclassified(
+    session: Session, make_item: ItemFactory
+) -> None:
+    plain, fallback, auto = (_quarantined(session, make_item) for _ in range(3))
+    for found, reason, flag, when in (
+        (plain, "false_positive", False, NOW),
+        (fallback, "false_positive", True, LATER),
+        (auto, "reclassified", False, "2026-11-17T12:00:00+00:00"),
+    ):
+        entry = quarantine.get_active_by_item(session, found.id)
+        assert entry is not None
+        quarantine.mark_restored(session, entry.id, reason=reason, fallback=flag, now=when)
+
+    notices = quarantine.recent_restore_notices(session, limit=10)
+
+    assert [(n.item_id, n.reason, n.fallback) for n in notices] == [
+        (auto.id, "reclassified", False),
+        (fallback.id, "false_positive", True),
+    ]
+    assert len(quarantine.recent_restore_notices(session, limit=1)) == 1

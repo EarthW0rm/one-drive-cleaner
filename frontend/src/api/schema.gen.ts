@@ -193,6 +193,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/quarantine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Quarantine */
+        get: operations["list_quarantine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quarantine/deletions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Deletion */
+        post: operations["confirm_quarantine_deletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quarantine/deletions/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Deletion */
+        post: operations["preview_quarantine_deletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quarantine/moves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move To Quarantine */
+        post: operations["move_to_quarantine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quarantine/restores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore From Quarantine */
+        post: operations["restore_from_quarantine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/review": {
         parameters: {
             query?: never;
@@ -421,6 +506,29 @@ export interface components {
             /** Removable */
             removable?: boolean | null;
         };
+        /** DeletionPreview */
+        DeletionPreview: {
+            /** Confirmation Token */
+            confirmation_token: string;
+            /** Count */
+            count: number;
+            /** Expires At */
+            expires_at: string;
+            /** Total Bytes */
+            total_bytes: number;
+        };
+        /** DeletionPreviewRequest */
+        DeletionPreviewRequest: {
+            /** Item Ids */
+            item_ids: number[];
+        };
+        /** DeletionRequest */
+        DeletionRequest: {
+            /** Confirmation Token */
+            confirmation_token: string;
+            /** Item Ids */
+            item_ids: number[];
+        };
         /** ErrorBody */
         ErrorBody: {
             code: components["schemas"]["ErrorCode"];
@@ -539,6 +647,11 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** JobResponse */
+        JobResponse: {
+            /** Job Id */
+            job_id: number;
+        };
         /**
          * JobType
          * @enum {string}
@@ -596,12 +709,79 @@ export interface components {
             current: components["schemas"]["ModelVersionModel"] | null;
             gate: components["schemas"]["GateModel"];
         };
+        /** MovesRequest */
+        MovesRequest: {
+            /** Item Ids */
+            item_ids: number[];
+        };
         /** ProgressModel */
         ProgressModel: {
             /** Done */
             done: number;
             /** Total */
             total: number;
+        };
+        /** QuarantineGroup */
+        QuarantineGroup: {
+            /** Category Id */
+            category_id: number | null;
+            /** Count */
+            count: number;
+            /** Total Bytes */
+            total_bytes: number;
+        };
+        /** QuarantineItem */
+        QuarantineItem: {
+            /** Category Id */
+            category_id: number | null;
+            /** Item Id */
+            item_id: number;
+            /** Mode */
+            mode: string;
+            /** Moved At */
+            moved_at: string | null;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** QuarantineResponse */
+        QuarantineResponse: {
+            /** Groups */
+            groups: components["schemas"]["QuarantineGroup"][];
+            /** Items */
+            items: components["schemas"]["QuarantineItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Restore Notices */
+            restore_notices: components["schemas"]["RestoreNotice"][];
+            /** Total Bytes */
+            total_bytes: number;
+            /** Total Count */
+            total_count: number;
+        };
+        /** RestoreEntry */
+        RestoreEntry: {
+            /** Category Id */
+            category_id: number;
+            /** Item Id */
+            item_id: number;
+        };
+        /** RestoreNotice */
+        RestoreNotice: {
+            /** Category Id */
+            category_id: number | null;
+            /** Item Id */
+            item_id: number;
+            /** Restore Fallback */
+            restore_fallback: boolean;
+            /** Restore Reason */
+            restore_reason: string | null;
+            /** Restored At */
+            restored_at: string | null;
+        };
+        /** RestoresRequest */
+        RestoresRequest: {
+            /** Restores */
+            restores: components["schemas"]["RestoreEntry"][];
         };
         /** RetryFailuresRequest */
         RetryFailuresRequest: {
@@ -1562,6 +1742,306 @@ export interface operations {
                 };
             };
             /** @description Requisição inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_quarantine: {
+        parameters: {
+            query?: {
+                category_id?: number | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuarantineResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirm_quarantine_deletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_quarantine_deletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletionPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionPreview"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    move_to_quarantine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restore_from_quarantine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoresRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos */
             422: {
                 headers: {
                     [name: string]: unknown;

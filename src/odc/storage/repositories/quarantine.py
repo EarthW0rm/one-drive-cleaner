@@ -3,10 +3,10 @@
 
 from collections.abc import Sequence
 
-from sqlalchemy import func, select, update
+from sqlalchemy import ColumnElement, Select, func, select, update
 from sqlalchemy.orm import Session
 
-from odc.storage.dto import QuarantineEntryRow
+from odc.storage.dto import QuarantineEntryRow, QuarantineGroup, QuarantineListRow, RestoreNotice
 from odc.storage.errors import ConflictError, NotFoundError, StorageValidationError
 from odc.storage.repositories._common import dto_columns, execute_dml, inserted_id, to_dto
 from odc.storage.tables import (
@@ -14,6 +14,8 @@ from odc.storage.tables import (
     QUARANTINE_STATUSES,
     RESTORE_REASONS,
     item,
+    label,
+    prediction,
     quarantine_entry,
 )
 
@@ -155,3 +157,91 @@ def left_by_user_item_ids(session: Session, item_ids: Sequence[int]) -> frozense
         )
         found.update(int(value) for value in session.execute(stmt).scalars())
     return frozenset(found)
+
+
+def _effective_category() -> ColumnElement[int | None]:
+    """Categoria efetiva do item da entrada: rótulo vigente do utilizador, senão a predição."""
+    current_label = (
+        select(label.c.category_id)
+        .where(label.c.item_id == _T.c.item_id)
+        .order_by(label.c.created_at.desc(), label.c.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    predicted = (
+        select(prediction.c.category_id)
+        .where(prediction.c.item_id == _T.c.item_id)
+        .scalar_subquery()
+    )
+    return func.coalesce(current_label, predicted)
+
+
+def _active_base(
+    category_id: int | None,
+) -> Select[tuple[int, int, int | None, str, str | None, int]]:
+    effective = _effective_category().label("category_id")
+    stmt = (
+        select(_T.c.id, _T.c.item_id, effective, _T.c.mode, _T.c.moved_at, item.c.size_bytes)
+        .join(item, item.c.id == _T.c.item_id)
+        .where(_T.c.status == "active", item.c.state == "QUARENTENA")
+    )
+    if category_id is None:
+        return stmt
+    return stmt.where(_effective_category() == category_id)
+
+
+def active_page(
+    session: Session, *, category_id: int | None, before_id: int | None, limit: int
+) -> Sequence[QuarantineListRow]:
+    """Entradas ativas (mais recentes primeiro), filtráveis por categoria efetiva."""
+    stmt = _active_base(category_id)
+    if before_id is not None:
+        stmt = stmt.where(_T.c.id < before_id)
+    rows = session.execute(stmt.order_by(_T.c.id.desc()).limit(limit)).mappings()
+    return [
+        QuarantineListRow(
+            entry_id=int(row["id"]),
+            item_id=int(row["item_id"]),
+            category_id=None if row["category_id"] is None else int(row["category_id"]),
+            mode=str(row["mode"]),
+            moved_at=None if row["moved_at"] is None else str(row["moved_at"]),
+            size_bytes=int(row["size_bytes"]),
+        )
+        for row in rows
+    ]
+
+
+def active_groups(session: Session) -> Sequence[QuarantineGroup]:
+    """Totais da quarentena ativa por categoria efetiva (ordenado por categoria)."""
+    sub = _active_base(None).subquery()
+    stmt = (
+        select(sub.c.category_id, func.count(), func.coalesce(func.sum(sub.c.size_bytes), 0))
+        .group_by(sub.c.category_id)
+        .order_by(sub.c.category_id)
+    )
+    return [QuarantineGroup(row[0], int(row[1]), int(row[2])) for row in session.execute(stmt)]
+
+
+def recent_restore_notices(session: Session, *, limit: int) -> Sequence[RestoreNotice]:
+    """Restaurações recentes com aviso: fallback (RN-19) ou `reclassified` (RN-17)."""
+    effective = _effective_category().label("category_id")
+    stmt = (
+        select(
+            _T.c.id,
+            _T.c.item_id,
+            effective,
+            _T.c.restored_at,
+            _T.c.restore_reason,
+            _T.c.restore_fallback,
+        )
+        .where(
+            _T.c.status == "restored",
+            (_T.c.restore_fallback == 1) | (_T.c.restore_reason == "reclassified"),
+        )
+        .order_by(_T.c.restored_at.desc(), _T.c.id.desc())
+        .limit(limit)
+    )
+    return [
+        RestoreNotice(row[0], row[1], row[2], row[3], row[4], bool(row[5]))
+        for row in session.execute(stmt)
+    ]

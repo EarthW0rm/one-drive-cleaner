@@ -165,3 +165,36 @@ class Page[RowT]:
 
     rows: tuple[RowT, ...]
     next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class QuarantineListRow:
+    """Item da quarentena para a listagem: categoria efetiva = rótulo vigente, senão predição."""
+
+    entry_id: int
+    item_id: int
+    category_id: int | None
+    mode: str
+    moved_at: str | None
+    size_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class QuarantineGroup:
+    """Totais da quarentena ativa por categoria efetiva (`None`: sem rótulo nem predição)."""
+
+    category_id: int | None
+    count: int
+    total_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreNotice:
+    """Restauração recente que merece aviso: fallback para Restaurados (RN-19) ou RN-17."""
+
+    entry_id: int
+    item_id: int
+    category_id: int | None
+    restored_at: str | None
+    reason: str | None
+    fallback: bool

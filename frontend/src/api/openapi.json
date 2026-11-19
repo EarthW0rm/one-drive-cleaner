@@ -162,6 +162,81 @@
         "title": "CategoryPatch",
         "type": "object"
       },
+      "DeletionPreview": {
+        "properties": {
+          "confirmation_token": {
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "total_bytes",
+          "confirmation_token",
+          "expires_at"
+        ],
+        "title": "DeletionPreview",
+        "type": "object"
+      },
+      "DeletionPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "item_ids": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "DeletionPreviewRequest",
+        "type": "object"
+      },
+      "DeletionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation_token": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "item_ids": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids",
+          "confirmation_token"
+        ],
+        "title": "DeletionRequest",
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -482,6 +557,19 @@
         "title": "JobModel",
         "type": "object"
       },
+      "JobResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "JobResponse",
+        "type": "object"
+      },
       "JobType": {
         "enum": [
           "scan",
@@ -666,6 +754,26 @@
         "title": "ModelsResponse",
         "type": "object"
       },
+      "MovesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "item_ids": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "MovesRequest",
+        "type": "object"
+      },
       "ProgressModel": {
         "properties": {
           "done": {
@@ -682,6 +790,231 @@
           "total"
         ],
         "title": "ProgressModel",
+        "type": "object"
+      },
+      "QuarantineGroup": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category_id",
+          "count",
+          "total_bytes"
+        ],
+        "title": "QuarantineGroup",
+        "type": "object"
+      },
+      "QuarantineItem": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "moved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved At"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "category_id",
+          "moved_at",
+          "mode",
+          "size_bytes"
+        ],
+        "title": "QuarantineItem",
+        "type": "object"
+      },
+      "QuarantineResponse": {
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/QuarantineGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuarantineItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "restore_notices": {
+            "items": {
+              "$ref": "#/components/schemas/RestoreNotice"
+            },
+            "title": "Restore Notices",
+            "type": "array"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total_count",
+          "total_bytes",
+          "next_cursor",
+          "groups",
+          "restore_notices"
+        ],
+        "title": "QuarantineResponse",
+        "type": "object"
+      },
+      "RestoreEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "item_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Item Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "category_id"
+        ],
+        "title": "RestoreEntry",
+        "type": "object"
+      },
+      "RestoreNotice": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "restore_fallback": {
+            "title": "Restore Fallback",
+            "type": "boolean"
+          },
+          "restore_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restore Reason"
+          },
+          "restored_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restored At"
+          }
+        },
+        "required": [
+          "item_id",
+          "category_id",
+          "restored_at",
+          "restore_reason",
+          "restore_fallback"
+        ],
+        "title": "RestoreNotice",
+        "type": "object"
+      },
+      "RestoresRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "restores": {
+            "items": {
+              "$ref": "#/components/schemas/RestoreEntry"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Restores",
+            "type": "array"
+          }
+        },
+        "required": [
+          "restores"
+        ],
+        "title": "RestoresRequest",
         "type": "object"
       },
       "RetryFailuresRequest": {
@@ -2164,6 +2497,400 @@
         "summary": "Train Model",
         "tags": [
           "models"
+        ]
+      }
+    },
+    "/api/quarantine": {
+      "get": {
+        "operationId": "list_quarantine",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuarantineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "List Quarantine",
+        "tags": [
+          "quarantine"
+        ]
+      }
+    },
+    "/api/quarantine/deletions": {
+      "post": {
+        "operationId": "confirm_quarantine_deletion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Confirm Deletion",
+        "tags": [
+          "quarantine"
+        ]
+      }
+    },
+    "/api/quarantine/deletions/preview": {
+      "post": {
+        "operationId": "preview_quarantine_deletion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Preview Deletion",
+        "tags": [
+          "quarantine"
+        ]
+      }
+    },
+    "/api/quarantine/moves": {
+      "post": {
+        "operationId": "move_to_quarantine",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MovesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Move To Quarantine",
+        "tags": [
+          "quarantine"
+        ]
+      }
+    },
+    "/api/quarantine/restores": {
+      "post": {
+        "operationId": "restore_from_quarantine",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoresRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PROTECTED_CATEGORY, NOT_IN_QUARANTINE, INVALID_CONFIRMATION ou dados inválidos"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Restore From Quarantine",
+        "tags": [
+          "quarantine"
         ]
       }
     },

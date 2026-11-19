@@ -36,6 +36,11 @@ def test_openapi_e_publicado_em_api_openapi_json(client: TestClient) -> None:
         "/api/models/train",
         "/api/categories",
         "/api/categories/{category_id}",
+        "/api/quarantine/moves",
+        "/api/quarantine",
+        "/api/quarantine/restores",
+        "/api/quarantine/deletions/preview",
+        "/api/quarantine/deletions",
     }
 
 

@@ -912,3 +912,17 @@ def test_pending_action_item_ids_por_operacao_e_modo(queue: JobQueue) -> None:
     assert queue.pending_action_item_ids("restore", "auto") == frozenset()
     assert queue.pending_action_item_ids("delete") == frozenset()
     assert queue.pending_action_item_ids("ensure_folder") == frozenset()
+
+
+def test_enqueue_in_participa_da_transacao_do_chamador(
+    queue: JobQueue, holder: EngineHolder
+) -> None:
+    payload = MovePayload(item_ids=[1], mode="manual")
+    with UnitOfWork(holder.engine) as session:
+        job_id = queue.enqueue_in(session, JobType.MOVE, payload)
+        session.rollback()
+    assert queue.get(job_id) is None
+
+    with UnitOfWork(holder.engine) as session:
+        kept = queue.enqueue_in(session, JobType.MOVE, payload)
+    assert queue.get(kept) is not None
