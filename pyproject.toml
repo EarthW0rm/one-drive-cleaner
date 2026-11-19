@@ -115,6 +115,7 @@ addopts = [
     "--cov=odc",
     "--cov=scripts",
     "--cov=tests/fakes",
+    "--cov=tests/e2e_launcher",
     "--cov=spikes",
     "--cov-branch",
     "--cov-fail-under=90",

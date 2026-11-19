@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Gates de qualidade (plan 10.1 e 10.6). Alvos de front delegam a `pnpm --dir frontend`;
-# `e2e/` ainda não existe (suíte E2E futura), então `test-e2e` é no-op com aviso até lá.
+# a suíte E2E (Playwright) é um projeto pnpm próprio em `e2e/` (plan 10.5).
 
-.PHONY: lint lint-python lint-frontend lint-repo test test-python test-frontend \
+.PHONY: lint lint-python lint-frontend lint-e2e lint-repo test test-python test-frontend \
 	build-frontend contract test-integration model-data test-model test-e2e test-all obs-up obs-down
 
 FRONTEND_DIR := frontend
+E2E_DIR := e2e
 # pytest sem testes coletados retorna 5; só é tolerado nas suítes vazias marcadas.
 PYTEST_EMPTY_OK = rc=$$?; [ $$rc -eq 5 ] && echo "suite vazia (exit 5 tolerado)" || exit $$rc
 
@@ -20,6 +21,10 @@ lint-python:
 lint-frontend:
 	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
 	pnpm --dir $(FRONTEND_DIR) run lint
+
+lint-e2e:
+	pnpm --dir $(E2E_DIR) install --frozen-lockfile
+	pnpm --dir $(E2E_DIR) run lint
 
 build-frontend:
 	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
@@ -36,7 +41,7 @@ lint-repo:
 	uv run python scripts/check_spdx.py
 	uv run python scripts/check_test_pairs.py
 
-lint: lint-python lint-frontend lint-repo
+lint: lint-python lint-frontend lint-e2e lint-repo
 
 test-python:
 	uv run pytest tests/unit
@@ -58,10 +63,13 @@ model-data:
 test-model:
 	uv run pytest -m "model or perf" --no-cov tests; $(PYTEST_EMPTY_OK)
 
-test-e2e:
-	@if [ -f e2e/playwright.config.ts ]; then \
-		pnpm --dir $(FRONTEND_DIR) exec playwright test --config ../e2e/playwright.config.ts; \
-	else echo "AVISO: e2e/ inexistente; test-e2e ignorado (suíte E2E ainda não criada)"; fi
+# E2E (plan 10.5): Chromium e WebKit contra o `odc` real com Graph, identidade e embedder fakes
+# (launcher em tests/e2e_launcher). A SPA é recompilada antes; os navegadores são instalados
+# sob demanda (idempotente). Sem conta real, sem fotos reais.
+test-e2e: build-frontend
+	pnpm --dir $(E2E_DIR) install --frozen-lockfile
+	pnpm --dir $(E2E_DIR) run browsers
+	pnpm --dir $(E2E_DIR) run test
 
 test-all: lint test test-integration test-model test-e2e
 

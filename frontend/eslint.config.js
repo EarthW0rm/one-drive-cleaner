@@ -4,7 +4,6 @@ import vitest from "@vitest/eslint-plugin";
 import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import { importX } from "eslint-plugin-import-x";
 import jsxA11y from "eslint-plugin-jsx-a11y";
-import playwright from "eslint-plugin-playwright";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import sonarjs from "eslint-plugin-sonarjs";
@@ -85,9 +84,5 @@ export default tseslint.config(
     files: ["**/*.js"],
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: { globals: globals.node },
-  },
-  {
-    files: ["e2e/**/*.ts"],
-    extends: [playwright.configs["flat/recommended"]],
   },
 );
