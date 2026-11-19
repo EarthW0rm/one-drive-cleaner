@@ -18,7 +18,8 @@ import { useMemo, useState, type ReactElement } from "react";
 import { CATEGORIES_KEY, useCategories, type CategoryModel } from "../../api/categories";
 import { ApiError } from "../../api/client";
 import { useSaveLabels, type LabelEntry, type LabelsResponse } from "../../api/labels";
-import { labelsSinceLastTraining, useModels } from "../../api/models";
+import { useMetricsSummary } from "../../api/metrics";
+import { useModels } from "../../api/models";
 import { useMoveToQuarantine } from "../../api/quarantine";
 import {
   REVIEW_KEY,
@@ -124,6 +125,7 @@ export function ReviewPage(): ReactElement {
   const thumbnails = useThumbnails(useMemo(() => items.map((item) => item.item_id), [items]));
   const categories = useCategories();
   const models = useModels();
+  const metrics = useMetricsSummary();
   const settings = useSettings();
   const saveLabels = useSaveLabels();
   const moveToQuarantine = useMoveToQuarantine();
@@ -211,7 +213,7 @@ export function ReviewPage(): ReactElement {
       });
       return;
     }
-    const known = models.data === undefined ? null : labelsSinceLastTraining(models.data);
+    const known = metrics.data?.labels.since_last_training ?? null;
     const remaining = known === null ? null : Math.max(0, retrainEvery - known - result.saved);
     const base = `${String(result.saved)} ${plural(result.saved, "rótulo salvo", "rótulos salvos")}.`;
     void messageApi.success(
@@ -312,6 +314,7 @@ export function ReviewPage(): ReactElement {
         loading={models.isPending}
         failed={models.isError}
         retrainEvery={retrainEvery}
+        labelsSinceTraining={metrics.data?.labels.since_last_training ?? null}
         categoryName={categoryName}
       />
       {categories.data === null || categories.isError ? (

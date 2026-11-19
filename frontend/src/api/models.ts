@@ -16,20 +16,6 @@ export function useModels() {
   });
 }
 
-/**
- * Rótulos gravados depois da versão de modelo mais recente (vigente ou candidata). A API não
- * expõe esse contador: ele é aproximado por `gate.labels - labels_count` da última versão.
- */
-export function labelsSinceLastTraining(models: ModelsResponse): number {
-  const versions =
-    models.current === null ? models.candidates : [models.current, ...models.candidates];
-  const latest = versions.reduce<ModelVersion | null>(
-    (best, version) => (best === null || version.id > best.id ? version : best),
-    null,
-  );
-  return Math.max(0, models.gate.labels - (latest?.labels_count ?? 0));
-}
-
 export interface CategoryPrecision {
   readonly categoryId: number;
   readonly precision: number;

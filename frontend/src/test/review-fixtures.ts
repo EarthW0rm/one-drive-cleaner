@@ -6,6 +6,7 @@ import type { ModelsResponse } from "../api/models";
 import type { ReviewItem } from "../api/review";
 
 import { TEST_ORIGIN } from "./handlers";
+import { metricsHandler, metricsSummary } from "./metrics-fixtures";
 
 const REVIEW_TOTAL = 250;
 
@@ -112,6 +113,8 @@ export interface ReviewApiOptions {
   readonly trainJobId?: number | null;
   readonly categories?: readonly CategoryModel[] | null;
   readonly models?: ModelsResponse;
+  /** `labels.since_last_training` do resumo de métricas (padrão 15). */
+  readonly labelsSinceTraining?: number;
   /** IDs sem URL de miniatura (o servidor devolve mapa parcial). */
   readonly missingThumbnails?: readonly number[];
 }
@@ -162,6 +165,11 @@ export function reviewApiHandlers(options: ReviewApiOptions = {}): {
       HttpResponse.json({ retrain_every: 20, automation_mode: "evolutive" }),
     ),
     http.get(`${TEST_ORIGIN}/api/models`, () => HttpResponse.json(options.models ?? models())),
+    metricsHandler(
+      metricsSummary({
+        labels: { total: 55, since_last_training: options.labelsSinceTraining ?? 15 },
+      }),
+    ),
   ];
   return {
     api,

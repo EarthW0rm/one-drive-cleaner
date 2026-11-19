@@ -31,6 +31,8 @@ import {
 import { useLogout } from "../../api/useSession";
 import { errorMessage } from "../../app/errors";
 
+import { GateState } from "./GateState";
+
 const MIB = 1024 * 1024;
 const MIN_TEMP_CAP_MB = 256;
 const THRESHOLD_LIMITS = { min: 0.5, max: 0.999 } as const;
@@ -249,6 +251,7 @@ function SettingsForm({ saved }: Readonly<SettingsFormProps>): ReactElement {
           >
             <Segmented options={MODE_OPTIONS} aria-label="Modo de automação" block />
           </Form.Item>
+          <GateState />
           <Form.Item
             name="auto_threshold"
             label="Limiar de confiança para o modo Automático"

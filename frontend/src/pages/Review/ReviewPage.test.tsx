@@ -310,10 +310,10 @@ describe("ReviewPage: rótulos em lote", () => {
     ).toBeInTheDocument();
   });
 
-  it("não informa o que falta quando o estado do modelo não carregou", async () => {
+  it("não informa o que falta quando o contador de rótulos não carregou", async () => {
     setup(
       {},
-      http.get(`${TEST_ORIGIN}/api/models`, () => errorResponse("INTERNAL", "x", 400)),
+      http.get(`${TEST_ORIGIN}/api/metrics/summary`, () => errorResponse("INTERNAL", "x", 400)),
     );
     await loaded();
 

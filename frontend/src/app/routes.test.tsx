@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createQueryClient } from "../api/queryClient";
 import { onboardedHandlers, sessionHandler } from "../test/handlers";
+import { metricsHandler } from "../test/metrics-fixtures";
 import { quarantineApiHandlers } from "../test/quarantine-fixtures";
 import { reviewApiHandlers } from "../test/review-fixtures";
 import { server } from "../test/server";
@@ -69,6 +70,24 @@ describe("AppRoutes", () => {
 
     expect(await screen.findByRole("heading", { name: "Quarentena" })).toBeInTheDocument();
     expect(await screen.findByAltText("Miniatura do item 1")).toBeInTheDocument();
+  });
+
+  it("renderiza a tela de Métricas em /metricas", async () => {
+    server.use(
+      sessionHandler(),
+      ...onboardedHandlers(),
+      ...reviewApiHandlers().handlers,
+      metricsHandler(),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient(0)}>
+        <MemoryRouter initialEntries={["/metricas"]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Itens no acervo")).toBeInTheDocument();
   });
 
   it("renderiza a tela de Categorias em /categorias", async () => {

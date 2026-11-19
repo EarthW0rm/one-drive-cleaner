@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { createQueryClient } from "../../api/queryClient";
 import { errorResponse, sessionHandler, TEST_ORIGIN } from "../../test/handlers";
+import { models } from "../../test/review-fixtures";
 import { server } from "../../test/server";
 
 import { buildPatch, SettingsPage, type SettingsFormValues } from "./SettingsPage";
@@ -44,6 +45,7 @@ function settingsHandlers(current: SettingsFixture = settings()) {
   const bodies: unknown[] = [];
   const handlers = [
     sessionHandler(),
+    http.get(`${TEST_ORIGIN}/api/models`, () => HttpResponse.json(models())),
     http.get(URL_SETTINGS, () => HttpResponse.json(current)),
     http.put(URL_SETTINGS, async ({ request }) => {
       const body: unknown = await request.json();
@@ -73,6 +75,16 @@ function saveButton(): HTMLElement {
 }
 
 describe("SettingsPage", () => {
+  it("exibe o estado atual do gate junto ao seletor de modo", async () => {
+    const { handlers } = settingsHandlers();
+    server.use(...handlers);
+
+    renderPage();
+
+    expect(await screen.findByText("0,93 / meta 0,98")).toBeInTheDocument();
+    expect(screen.getByText("55 / meta 100")).toBeInTheDocument();
+  });
+
   it("mostra os valores atuais, com teto de temporário em MB", async () => {
     const { handlers } = settingsHandlers();
     server.use(...handlers);

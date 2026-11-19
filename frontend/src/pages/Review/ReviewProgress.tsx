@@ -2,7 +2,7 @@
 import { Alert, Card, Col, Progress, Row, Skeleton, Space, Statistic, Tag, Typography } from "antd";
 import type { ReactElement } from "react";
 
-import { categoryPrecisions, labelsSinceLastTraining, type ModelsResponse } from "../../api/models";
+import { categoryPrecisions, type ModelsResponse } from "../../api/models";
 
 const PERCENT = 100;
 const decimal = new Intl.NumberFormat("pt-BR", {
@@ -17,14 +17,15 @@ export interface ReviewProgressProps {
   readonly failed: boolean;
   /** Quantidade de rótulos novos que dispara o retreino (`retrain_every`). */
   readonly retrainEvery: number;
+  /** Rótulos desde o último treino (`labels.since_last_training` do resumo); `null` = indisponível. */
+  readonly labelsSinceTraining: number | null;
   readonly categoryName: (categoryId: number) => string | undefined;
 }
 
 function RetrainProgress({
-  models,
+  fresh,
   retrainEvery,
-}: Readonly<{ models: ModelsResponse; retrainEvery: number }>): ReactElement {
-  const fresh = labelsSinceLastTraining(models);
+}: Readonly<{ fresh: number; retrainEvery: number }>): ReactElement {
   const percent = Math.min(PERCENT, Math.round((fresh / retrainEvery) * PERCENT));
   return (
     <div>
@@ -105,6 +106,7 @@ export function ReviewProgress({
   loading,
   failed,
   retrainEvery,
+  labelsSinceTraining,
   categoryName,
 }: ReviewProgressProps): ReactElement {
   if (loading) {
@@ -120,7 +122,9 @@ export function ReviewProgress({
   return (
     <Card size="small" aria-label="Estado do aprendizado">
       <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
-        <RetrainProgress models={models} retrainEvery={retrainEvery} />
+        {labelsSinceTraining === null ? null : (
+          <RetrainProgress fresh={labelsSinceTraining} retrainEvery={retrainEvery} />
+        )}
         <GateStats models={models} />
         <CategoryPrecisions models={models} categoryName={categoryName} />
       </Space>

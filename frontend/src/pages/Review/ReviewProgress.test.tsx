@@ -14,6 +14,7 @@ function renderProgress(overrides: Partial<ReviewProgressProps> = {}): void {
       loading={false}
       failed={false}
       retrainEvery={20}
+      labelsSinceTraining={15}
       categoryName={(id) => CATEGORIES.find((category) => category.id === id)?.name}
       {...overrides}
     />,
@@ -35,12 +36,19 @@ describe("ReviewProgress", () => {
   });
 
   it("limita o progresso a 100% quando o limite foi ultrapassado", () => {
-    renderProgress({ models: withGate({ labels: 400 }) });
+    renderProgress({ labelsSinceTraining: 400 });
 
     expect(
       screen.getByRole("progressbar", { name: "Progresso até o próximo retreino" }),
     ).toHaveAttribute("aria-valuenow", "100");
     expect(screen.getByText("20 / 20")).toBeInTheDocument();
+  });
+
+  it("oculta o progresso de retreino quando o contador não está disponível", () => {
+    renderProgress({ labelsSinceTraining: null });
+
+    expect(screen.queryByText("Próximo retreino")).not.toBeInTheDocument();
+    expect(screen.getByText("Meta ainda não atingida")).toBeInTheDocument();
   });
 
   it("mostra a distância até a meta do modo Automático", () => {

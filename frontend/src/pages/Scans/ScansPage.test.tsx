@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { createQueryClient } from "../../api/queryClient";
 import { errorResponse, sessionHandler, TEST_ORIGIN } from "../../test/handlers";
+import { metricsHandler } from "../../test/metrics-fixtures";
 import { server } from "../../test/server";
 
 import { PAUSE_REASON_TEXT, ScansPage } from "./ScansPage";
@@ -70,6 +71,15 @@ describe("ScansPage", () => {
     expect(screen.getByText("desconhecido")).toBeInTheDocument();
     expect(screen.getByText("estranho")).toBeInTheDocument();
     expect(screen.getByText("INTERNAL")).toBeInTheDocument();
+  });
+
+  it("exibe contadores por estado e backlog do resumo de métricas", async () => {
+    useJobs([job()], metricsHandler());
+    renderPage();
+
+    expect(await screen.findByText("Aguardando extração")).toBeInTheDocument();
+    expect(screen.getByText("Sugerido")).toBeInTheDocument();
+    expect(screen.getByText("Aguardando revisão")).toBeInTheDocument();
   });
 
   it("indica quando nunca houve varredura", async () => {

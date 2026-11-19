@@ -2,6 +2,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "./client";
+import { METRICS_KEY } from "./metrics";
 import { MODELS_KEY } from "./models";
 import type { components } from "./schema.gen";
 
@@ -14,6 +15,10 @@ export function useSaveLabels() {
   return useMutation({
     mutationFn: (labels: readonly LabelEntry[]) =>
       apiFetch<LabelsResponse>("/api/labels", { method: "POST", json: { labels } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: MODELS_KEY }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: MODELS_KEY }),
+        queryClient.invalidateQueries({ queryKey: METRICS_KEY }),
+      ]),
   });
 }

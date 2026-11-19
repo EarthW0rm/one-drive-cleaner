@@ -15,6 +15,8 @@ import type { ReactElement } from "react";
 
 import { ApiError } from "../../api/client";
 import {
+  POLL_INTERVAL_MS,
+  hasActiveJob,
   useJobs,
   usePauseJob,
   useResumeJob,
@@ -22,9 +24,11 @@ import {
   type JobModel,
   type ScanMode,
 } from "../../api/jobs";
+import { useMetricsSummary } from "../../api/metrics";
 import { errorMessage } from "../../app/errors";
 
 import { FailuresList } from "./FailuresList";
+import { StateCounters } from "./StateCounters";
 
 export const PAUSE_REASON_TEXT: Record<string, string> = {
   login_required: "Pausado: é necessário entrar novamente na conta Microsoft.",
@@ -92,6 +96,7 @@ function pauseTexts(jobs: readonly JobModel[]): string[] {
 
 export function ScansPage(): ReactElement {
   const jobs = useJobs();
+  const metrics = useMetricsSummary(hasActiveJob(jobs.data) ? POLL_INTERVAL_MS : false);
   const start = useStartScan();
   const pause = usePauseJob();
   const resume = useResumeJob();
@@ -149,6 +154,7 @@ export function ScansPage(): ReactElement {
           </Descriptions.Item>
         )}
       </Descriptions>
+      {metrics.data === undefined ? null : <StateCounters summary={metrics.data} />}
       <Space>
         <Button
           type="primary"
