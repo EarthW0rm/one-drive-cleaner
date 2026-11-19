@@ -3,7 +3,7 @@
 # a suíte E2E (Playwright) é um projeto pnpm próprio em `e2e/` (plan 10.5).
 
 .PHONY: lint lint-python lint-frontend lint-e2e lint-repo test test-python test-frontend \
-	build-frontend contract test-integration test-resilience model-data test-model test-e2e test-all obs-up obs-down
+	build-frontend contract test-integration test-resilience model-data test-model test-volume test-e2e test-all obs-up obs-down
 
 FRONTEND_DIR := frontend
 E2E_DIR := e2e
@@ -67,6 +67,11 @@ model-data:
 
 test-model:
 	uv run pytest -m "model or perf" --no-cov tests; $(PYTEST_EMPTY_OK)
+
+# Volumetria (plan 10.2, TF-157-04): 50 mil itens no `odc` real com fakes; mede os SLAs da spec 5.2
+# e grava volume-report.json (ODC_VOLUME_REPORT muda o caminho). Semanal/manual: fora de `test-all`.
+test-volume:
+	uv run pytest tests/volume -m volume --no-cov -q
 
 # E2E (plan 10.5): Chromium e WebKit contra o `odc` real com Graph, identidade e embedder fakes
 # (launcher em tests/e2e_launcher). A SPA é recompilada antes; os navegadores são instalados
