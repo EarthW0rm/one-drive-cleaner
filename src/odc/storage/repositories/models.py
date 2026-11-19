@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from odc.storage.dto import ModelVersionRow
 from odc.storage.errors import ConflictError, NotFoundError, StorageValidationError
-from odc.storage.repositories._common import dto_columns, inserted_id, to_dto
+from odc.storage.repositories._common import dto_columns, execute_dml, inserted_id, to_dto
 from odc.storage.tables import MODEL_STATUSES, MODEL_STRATEGIES, MODEL_TRIGGERS, model_version
 
 _COLUMNS = dto_columns(model_version, ModelVersionRow)
@@ -104,3 +104,17 @@ def reject(session: Session, version_id: int) -> ModelVersionRow:
     if rejected is None:  # pragma: no cover - garantido pelo update acima
         raise NotFoundError("model_version inexistente")
     return rejected
+
+
+def set_metrics(session: Session, version_id: int, metrics: str) -> ModelVersionRow:
+    """Regrava as métricas de uma versão (ex.: reavaliação do vigente no holdout atual)."""
+    result = execute_dml(
+        session,
+        update(model_version).where(model_version.c.id == version_id).values(metrics=metrics),
+    )
+    if result.rowcount == 0:
+        raise NotFoundError("model_version inexistente")
+    updated = get(session, version_id)
+    if updated is None:  # pragma: no cover - garantido pelo update acima
+        raise NotFoundError("model_version inexistente")
+    return updated

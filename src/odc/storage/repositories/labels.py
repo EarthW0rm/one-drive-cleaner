@@ -88,3 +88,9 @@ def count_since(session: Session, model_version_id: int) -> int:
         raise NotFoundError("model_version inexistente")
     stmt = select(func.count()).select_from(label).where(label.c.created_at > created)
     return int(session.execute(stmt).scalar_one())
+
+
+def count_labeled_items(session: Session) -> int:
+    """Itens com rótulo do utilizador (classificações vigentes; base do gate Evolutivo, RN-15)."""
+    stmt = select(func.count(func.distinct(label.c.item_id)))
+    return int(session.execute(stmt).scalar_one())

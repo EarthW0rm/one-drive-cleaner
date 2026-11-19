@@ -99,3 +99,19 @@ def test_count_since_conta_rotulos_apos_a_versao(session: Session, make_item: It
 def test_count_since_versao_inexistente(session: Session) -> None:
     with pytest.raises(NotFoundError):
         labels.count_since(session, 999)
+
+
+def test_count_labeled_items_conta_itens_distintos(
+    session: Session, make_item: ItemFactory
+) -> None:
+    first, second = make_item("ANALISADO").id, make_item("ANALISADO").id
+    screenshot, real = _cat(session, "screenshot"), _cat(session, "real_photo")
+    labels.add_many(session, [LabelInput(first, screenshot, "review")], now=T1)
+    labels.add_many(session, [LabelInput(first, real, "review")], now=T2)
+    labels.add_many(session, [LabelInput(second, real, "review")], now=T2)
+
+    assert labels.count_labeled_items(session) == 2
+
+
+def test_count_labeled_items_sem_rotulos_e_zero(session: Session) -> None:
+    assert labels.count_labeled_items(session) == 0

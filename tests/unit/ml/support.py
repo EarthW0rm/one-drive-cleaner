@@ -5,10 +5,15 @@ from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
+from sqlalchemy.orm import Session
 
 from odc.ml.dataset import Dataset, build_dataset
 from odc.storage.dto import CategoryRow, LabelRow
+from odc.storage.repositories import categories as category_repo
+from odc.storage.repositories import items, scan_roots
+from odc.storage.repositories import labels as label_repo
 from odc.storage.repositories.features import FeatureMatrix
+from odc.storage.repositories.labels import LabelInput
 
 NOW = "2026-01-01T00:00:00.000000+00:00"
 EMBEDDING_DIM = 8
@@ -97,3 +102,31 @@ def make_dataset(counts: dict[int, int], *, noise: float = 0.1, seed: int = 0) -
         embedding_model_id=1,
         meta_version=1,
     )
+
+
+def add_labeled_items(session: Session, amount: int, category_slug: str, *, start: int = 1) -> int:
+    """Cria `amount` itens sintéticos, cada um com um rótulo do utilizador; devolve a categoria."""
+    found = category_repo.get_by_slug(session, category_slug)
+    assert found is not None
+    root = scan_roots.add(session, drive_item_id="root-ml", display_path="/Camera Roll")
+    rows: list[LabelInput] = []
+    for n in range(start, start + amount):
+        created = items.upsert_from_delta(
+            session,
+            items.DeltaItem(
+                drive_item_id=f"drive-ml-{n}",
+                scan_root_id=root.id,
+                parent_id="parent-1",
+                name=f"img{n}.jpg",
+                mime_type="image/jpeg",
+                size_bytes=1000,
+                remote_created_at=NOW,
+                remote_modified_at=NOW,
+                ctag="c1",
+                etag="e1",
+            ),
+            now=NOW,
+        )
+        rows.append(LabelInput(created.id, found.id, "review"))
+    label_repo.add_many(session, rows, now=NOW)
+    return found.id

@@ -115,3 +115,17 @@ def test_indice_garante_uma_unica_vigente(session: Session) -> None:
         session.connection().exec_driver_sql(
             "UPDATE model_version SET status = 'current' WHERE id = ?", (second.id,)
         )
+
+
+def test_set_metrics_regrava_as_metricas(session: Session) -> None:
+    created = _candidate(session)
+
+    updated = models.set_metrics(session, created.id, '{"p": 2}')
+
+    assert updated.metrics == '{"p": 2}'
+    assert models.get(session, created.id) == updated
+
+
+def test_set_metrics_de_versao_inexistente_levanta(session: Session) -> None:
+    with pytest.raises(NotFoundError):
+        models.set_metrics(session, 999, "{}")
