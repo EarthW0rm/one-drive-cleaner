@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from odc.storage.cursor import Cursor, encode_cursor
 from odc.storage.dto import ItemRow
 from odc.storage.errors import StorageValidationError
-from odc.storage.repositories import categories, items, models, predictions
+from odc.storage.repositories import categories, items, labels, models, predictions
 from odc.storage.repositories.predictions import PredictionInput
 
 ItemFactory = Callable[[str], ItemRow]
@@ -100,6 +100,21 @@ def test_review_page_filtra_categoria_e_estado(
 
     assert [r.item_id for r in only_suggested.rows] == [ids[1]]
     assert other_category.rows == ()
+
+
+def test_review_page_sem_categoria_cobre_todas_e_omite_itens_ja_rotulados(
+    session: Session, make_item: ItemFactory, version_id: int
+) -> None:
+    ids = _seed(session, make_item, version_id, [0.2, 0.4, 0.6])
+    labels.add_many(
+        session, [labels.LabelInput(ids[0], _cat(session, "screenshot"), "review")], now=NOW
+    )
+
+    todos = predictions.review_page(session, None)
+    pendentes = predictions.review_page(session, None, unlabeled_only=True)
+
+    assert [r.item_id for r in todos.rows] == ids
+    assert [r.item_id for r in pendentes.rows] == ids[1:]
 
 
 @pytest.mark.parametrize("limit", [0, 501])

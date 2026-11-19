@@ -27,6 +27,11 @@ def test_schema_contem_rotas_de_sistema() -> None:
         "/api/failures",
         "/api/failures/retry",
         "/api/settings",
+        "/api/review",
+        "/api/labels",
+        "/api/thumbnails",
+        "/api/models",
+        "/api/models/train",
     }
 
 

@@ -14,6 +14,8 @@ from odc.jobs.supervisor import JobSupervisor
 from odc.quarantine.confirmation import ConfirmationStore
 from odc.quarantine.folders import AppFolders
 from odc.storage.account_db import AccountDatabase
+from odc.telemetry.metrics import Metrics
+from odc.web.thumbnail_cache import ThumbnailCache
 
 AuthState = Literal["authenticated", "login_required"]
 
@@ -76,7 +78,8 @@ class AppServices:
     Microsoft Graph usado pelas rotas (None: rotas que dependem dele respondem 503).
     `app_folders` garante as pastas da aplicação no OneDrive (None: sem Graph, não garante).
     `confirmations` emite e consome os tokens de confirmação de exclusão (RN-20), compartilhado
-    com o handler do job `delete`.
+    com o handler do job `delete`. `metrics` registra as decisões de revisão (None: sem
+    telemetria). `thumbnails` guarda as URLs de miniatura (TTL 30 min, nunca em disco).
     `session_secret` é aleatório por processo: reiniciar o `odc` invalida as sessões.
     """
 
@@ -86,5 +89,7 @@ class AppServices:
     graph: GraphClient | None = None
     app_folders: AppFolders | None = None
     confirmations: ConfirmationStore | None = None
+    metrics: Metrics | None = None
+    thumbnails: ThumbnailCache = field(default_factory=ThumbnailCache)
     static_dir: Path = field(default_factory=default_static_dir)
     session_secret: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)

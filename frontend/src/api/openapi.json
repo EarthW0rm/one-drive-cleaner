@@ -168,6 +168,86 @@
         "title": "FoldersResponse",
         "type": "object"
       },
+      "GateModel": {
+        "description": "Valores atuais (`precision`, `labels`, `support`) e metas (`*_goal`) do gate.",
+        "properties": {
+          "automation_mode": {
+            "enum": [
+              "manual",
+              "auto",
+              "evolutive"
+            ],
+            "title": "Automation Mode",
+            "type": "string"
+          },
+          "effective_mode": {
+            "enum": [
+              "manual",
+              "auto"
+            ],
+            "title": "Effective Mode",
+            "type": "string"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "has_metrics": {
+            "title": "Has Metrics",
+            "type": "boolean"
+          },
+          "labels": {
+            "title": "Labels",
+            "type": "integer"
+          },
+          "labels_goal": {
+            "title": "Labels Goal",
+            "type": "integer"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "precision_goal": {
+            "title": "Precision Goal",
+            "type": "number"
+          },
+          "support": {
+            "title": "Support",
+            "type": "integer"
+          },
+          "support_goal": {
+            "title": "Support Goal",
+            "type": "integer"
+          },
+          "threshold_matches": {
+            "title": "Threshold Matches",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "automation_mode",
+          "effective_mode",
+          "eligible",
+          "has_metrics",
+          "threshold_matches",
+          "precision",
+          "labels",
+          "support",
+          "precision_goal",
+          "labels_goal",
+          "support_goal"
+        ],
+        "title": "GateModel",
+        "type": "object"
+      },
       "HealthResponse": {
         "properties": {
           "db": {
@@ -286,6 +366,158 @@
         "title": "JobsResponse",
         "type": "object"
       },
+      "LabelEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "item_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Item Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "category_id"
+        ],
+        "title": "LabelEntry",
+        "type": "object"
+      },
+      "LabelsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/LabelEntry"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Labels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "labels"
+        ],
+        "title": "LabelsRequest",
+        "type": "object"
+      },
+      "LabelsResponse": {
+        "properties": {
+          "saved": {
+            "title": "Saved",
+            "type": "integer"
+          },
+          "train_job_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Train Job Id"
+          }
+        },
+        "required": [
+          "saved",
+          "train_job_id"
+        ],
+        "title": "LabelsResponse",
+        "type": "object"
+      },
+      "ModelVersionModel": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "labels_count": {
+            "title": "Labels Count",
+            "type": "integer"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "strategy": {
+            "title": "Strategy",
+            "type": "string"
+          },
+          "trigger": {
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "strategy",
+          "status",
+          "trigger",
+          "labels_count",
+          "created_at",
+          "metrics"
+        ],
+        "title": "ModelVersionModel",
+        "type": "object"
+      },
+      "ModelsResponse": {
+        "properties": {
+          "auto_eligible": {
+            "title": "Auto Eligible",
+            "type": "boolean"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ModelVersionModel"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelVersionModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gate": {
+            "$ref": "#/components/schemas/GateModel"
+          }
+        },
+        "required": [
+          "current",
+          "candidates",
+          "auto_eligible",
+          "gate"
+        ],
+        "title": "ModelsResponse",
+        "type": "object"
+      },
       "ProgressModel": {
         "properties": {
           "done": {
@@ -348,6 +580,69 @@
           "skipped"
         ],
         "title": "RetryFailuresResponse",
+        "type": "object"
+      },
+      "ReviewItem": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "suggested_category_id": {
+            "title": "Suggested Category Id",
+            "type": "integer"
+          },
+          "user_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Category Id"
+          }
+        },
+        "required": [
+          "item_id",
+          "suggested_category_id",
+          "confidence",
+          "user_category_id"
+        ],
+        "title": "ReviewItem",
+        "type": "object"
+      },
+      "ReviewResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ReviewResponse",
         "type": "object"
       },
       "ScanAcceptedResponse": {
@@ -612,6 +907,60 @@
           "restart_required"
         ],
         "title": "SettingsResponse",
+        "type": "object"
+      },
+      "ThumbnailsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "item_ids": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "refresh": {
+            "default": false,
+            "title": "Refresh",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "ThumbnailsRequest",
+        "type": "object"
+      },
+      "ThumbnailsResponse": {
+        "properties": {
+          "urls": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Urls",
+            "type": "object"
+          }
+        },
+        "required": [
+          "urls"
+        ],
+        "title": "ThumbnailsResponse",
+        "type": "object"
+      },
+      "TrainAcceptedResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "TrainAcceptedResponse",
         "type": "object"
       }
     }
@@ -1234,6 +1583,343 @@
         ]
       }
     },
+    "/api/labels": {
+      "post": {
+        "operationId": "save_labels",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Cursor inválido, item inexistente ou categoria arquivada/inexistente"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Save Labels",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/models": {
+      "get": {
+        "operationId": "get_models",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Requisição inválida"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Get Models",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/train": {
+      "post": {
+        "operationId": "train_model",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Já há um treino em andamento"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Requisição inválida"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Train Model",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/review": {
+      "get": {
+        "operationId": "list_review",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "uncertainty",
+              "enum": [
+                "uncertainty",
+                "confidence"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_labeled",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Labeled",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Cursor inválido, item inexistente ou categoria arquivada/inexistente"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "List Review",
+        "tags": [
+          "review"
+        ]
+      }
+    },
     "/api/scan-roots": {
       "get": {
         "operationId": "list_scan_roots",
@@ -1683,6 +2369,87 @@
         "summary": "Update Settings",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/thumbnails": {
+      "post": {
+        "operationId": "get_thumbnails",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThumbnailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThumbnailsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Login necessário"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Token CSRF ausente ou inválido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Recurso inexistente"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Item inexistente"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Erro interno"
+          }
+        },
+        "summary": "Get Thumbnails",
+        "tags": [
+          "thumbnails"
         ]
       }
     },

@@ -107,6 +107,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Labels */
+        post: operations["save_labels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Models */
+        get: operations["get_models"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/train": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Train Model */
+        post: operations["train_model"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Review */
+        get: operations["list_review"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scan-roots": {
         parameters: {
             query?: never;
@@ -171,6 +239,23 @@ export interface paths {
         /** Update Settings */
         put: operations["update_settings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get Thumbnails */
+        post: operations["get_thumbnails"];
         delete?: never;
         options?: never;
         head?: never;
@@ -306,6 +391,40 @@ export interface components {
             /** Folders */
             folders: components["schemas"]["FolderModel"][];
         };
+        /**
+         * GateModel
+         * @description Valores atuais (`precision`, `labels`, `support`) e metas (`*_goal`) do gate.
+         */
+        GateModel: {
+            /**
+             * Automation Mode
+             * @enum {string}
+             */
+            automation_mode: "manual" | "auto" | "evolutive";
+            /**
+             * Effective Mode
+             * @enum {string}
+             */
+            effective_mode: "manual" | "auto";
+            /** Eligible */
+            eligible: boolean;
+            /** Has Metrics */
+            has_metrics: boolean;
+            /** Labels */
+            labels: number;
+            /** Labels Goal */
+            labels_goal: number;
+            /** Precision */
+            precision: number | null;
+            /** Precision Goal */
+            precision_goal: number;
+            /** Support */
+            support: number;
+            /** Support Goal */
+            support_goal: number;
+            /** Threshold Matches */
+            threshold_matches: boolean;
+        };
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -348,6 +467,53 @@ export interface components {
             /** Jobs */
             jobs: components["schemas"]["JobModel"][];
         };
+        /** LabelEntry */
+        LabelEntry: {
+            /** Category Id */
+            category_id: number;
+            /** Item Id */
+            item_id: number;
+        };
+        /** LabelsRequest */
+        LabelsRequest: {
+            /** Labels */
+            labels: components["schemas"]["LabelEntry"][];
+        };
+        /** LabelsResponse */
+        LabelsResponse: {
+            /** Saved */
+            saved: number;
+            /** Train Job Id */
+            train_job_id: number | null;
+        };
+        /** ModelVersionModel */
+        ModelVersionModel: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Labels Count */
+            labels_count: number;
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            } | null;
+            /** Status */
+            status: string;
+            /** Strategy */
+            strategy: string;
+            /** Trigger */
+            trigger: string;
+        };
+        /** ModelsResponse */
+        ModelsResponse: {
+            /** Auto Eligible */
+            auto_eligible: boolean;
+            /** Candidates */
+            candidates: components["schemas"]["ModelVersionModel"][];
+            current: components["schemas"]["ModelVersionModel"] | null;
+            gate: components["schemas"]["GateModel"];
+        };
         /** ProgressModel */
         ProgressModel: {
             /** Done */
@@ -368,6 +534,24 @@ export interface components {
             requeued: number;
             /** Skipped */
             skipped: number;
+        };
+        /** ReviewItem */
+        ReviewItem: {
+            /** Confidence */
+            confidence: number;
+            /** Item Id */
+            item_id: number;
+            /** Suggested Category Id */
+            suggested_category_id: number;
+            /** User Category Id */
+            user_category_id: number | null;
+        };
+        /** ReviewResponse */
+        ReviewResponse: {
+            /** Items */
+            items: components["schemas"]["ReviewItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** ScanAcceptedResponse */
         ScanAcceptedResponse: {
@@ -449,6 +633,28 @@ export interface components {
             retrain_every: number;
             /** Temp Cap Bytes */
             temp_cap_bytes: number;
+        };
+        /** ThumbnailsRequest */
+        ThumbnailsRequest: {
+            /** Item Ids */
+            item_ids: number[];
+            /**
+             * Refresh
+             * @default false
+             */
+            refresh: boolean;
+        };
+        /** ThumbnailsResponse */
+        ThumbnailsResponse: {
+            /** Urls */
+            urls: {
+                [key: string]: string;
+            };
+        };
+        /** TrainAcceptedResponse */
+        TrainAcceptedResponse: {
+            /** Job Id */
+            job_id: number;
         };
     };
     responses: never;
@@ -916,6 +1122,249 @@ export interface operations {
             };
         };
     };
+    save_labels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Cursor inválido, item inexistente ou categoria arquivada/inexistente */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_models: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelsResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requisição inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    train_model: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainAcceptedResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Já há um treino em andamento */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requisição inválida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_review: {
+        parameters: {
+            query?: {
+                category_id?: number | null;
+                order?: "uncertainty" | "confidence";
+                cursor?: string | null;
+                limit?: number;
+                include_labeled?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Cursor inválido, item inexistente ou categoria arquivada/inexistente */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_scan_roots: {
         parameters: {
             query?: never;
@@ -1299,6 +1748,75 @@ export interface operations {
                 };
             };
             /** @description Valor fora da faixa ou campo não permitido */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Erro interno */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_thumbnails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThumbnailsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailsResponse"];
+                };
+            };
+            /** @description Login necessário */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token CSRF ausente ou inválido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Recurso inexistente */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Item inexistente */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -29,6 +29,11 @@ def test_openapi_e_publicado_em_api_openapi_json(client: TestClient) -> None:
         "/api/failures",
         "/api/failures/retry",
         "/api/settings",
+        "/api/review",
+        "/api/labels",
+        "/api/thumbnails",
+        "/api/models",
+        "/api/models/train",
     }
 
 

@@ -192,6 +192,7 @@ def bootstrap(  # noqa: PLR0913 - composição: hooks, telemetria, auth e handle
             graph=graph,
             app_folders=AppFolders(database, graph) if graph is not None else None,
             confirmations=confirmations,
+            metrics=metrics,
         ),
     )
     instrument_all(app, telemetry, httpx_hooks)

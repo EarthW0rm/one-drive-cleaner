@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from sqlalchemy import Column, ColumnElement, and_, delete, or_, select
+from sqlalchemy import Column, ColumnElement, and_, delete, exists, or_, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from odc.storage.cursor import Cursor, decode_cursor, encode_cursor
 from odc.storage.dto import Page, PredictionRow
 from odc.storage.errors import StorageValidationError
 from odc.storage.repositories._common import dto_columns, execute_dml, to_dto
-from odc.storage.tables import category, item, prediction
+from odc.storage.tables import category, item, label, prediction
 
 _COLUMNS = dto_columns(prediction, PredictionRow)
 ReviewOrder = Literal["margin", "confidence"]
@@ -84,24 +84,30 @@ def replace_for_items(
 
 def review_page(
     session: Session,
-    category_id: int,
+    category_id: int | None,
     *,
     order: ReviewOrder = "margin",
     cursor: str | None = None,
     limit: int = 50,
     state: str | None = None,
+    unlabeled_only: bool = False,
 ) -> Page[PredictionRow]:
-    """Fila de revisão da categoria.
+    """Fila de revisão (da categoria sugerida, ou de todas se `category_id` é `None`).
 
     `margin`: incerteza crescente (menor margem primeiro); `confidence`: decrescente.
-    Paginação por cursor (chave, `item_id`), sem repetir itens.
+    Paginação por cursor (chave, `item_id`), sem repetir itens. `unlabeled_only` omite os itens
+    que já têm rótulo do utilizador (rótulo vigente = o mais recente; existir um basta).
     """
     if not 1 <= limit <= MAX_PAGE_SIZE:
         raise StorageValidationError("limit fora do intervalo permitido")
     if order not in ("margin", "confidence"):
         raise StorageValidationError("ordenação inválida")
     key_col = prediction.c.margin if order == "margin" else prediction.c.confidence
-    stmt = select(*_COLUMNS).where(prediction.c.category_id == category_id)
+    stmt = select(*_COLUMNS)
+    if category_id is not None:
+        stmt = stmt.where(prediction.c.category_id == category_id)
+    if unlabeled_only:
+        stmt = stmt.where(~exists().where(label.c.item_id == prediction.c.item_id))
     if state is not None:
         stmt = stmt.join(item, item.c.id == prediction.c.item_id).where(item.c.state == state)
     if cursor is not None:
