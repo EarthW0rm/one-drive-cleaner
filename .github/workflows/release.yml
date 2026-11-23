@@ -1,0 +1,198 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Pacote de release (plan 11.5 e 11.6, TF-143-07): build do front (pnpm) -> wheel + sdist (uv build)
+# -> validação de conteúdo -> SBOM CycloneDX -> SHA256SUMS -> atestado de proveniência -> upload
+# no GitHub Release (único canal de publicação; nada vai ao PyPI). Dispara quando o release
+# criado pelo release-please é publicado; cada job tem somente as permissões de que precisa.
+name: release
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  UV_PYTHON: "3.12"
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: version
+        name: Validar o tag (vX.Y.Z)
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::tag '$TAG' fora do formato vX.Y.Z"
+            exit 1
+          fi
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: false # sem cache em workflow que publica artefatos
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          package-manager-cache: false # sem cache em workflow que publica artefatos
+      - name: Compilar a SPA e construir wheel e sdist
+        run: make build-dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  verify:
+    name: verify
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: Validar o conteúdo do wheel e do sdist
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: make verify-dist VERSION="$VERSION"
+
+  sbom:
+    name: sbom
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          package-manager-cache: false # sem cache em workflow que publica artefatos
+      - name: Gerar os SBOMs CycloneDX (Python e npm)
+        run: make sbom
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom
+          path: |
+            build/sbom/sbom-python.cdx.json
+            build/sbom/sbom-frontend.cdx.json
+          if-no-files-found: error
+          retention-days: 14
+
+  checksums:
+    name: checksums
+    needs: [verify, sbom]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sbom
+          path: release
+      - name: Gerar e conferir o SHA256SUMS
+        working-directory: release
+        run: |
+          set -euo pipefail
+          sha256sum -- onedrive_cleaner-*.whl onedrive_cleaner-*.tar.gz \
+            sbom-python.cdx.json sbom-frontend.cdx.json > SHA256SUMS
+          sha256sum --check --strict SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  attest:
+    name: attest
+    needs: checksums
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      id-token: write # certificado efêmero do Sigstore (OIDC)
+      attestations: write # grava o atestado de proveniência
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/onedrive_cleaner-*.whl
+            release/onedrive_cleaner-*.tar.gz
+            release/sbom-python.cdx.json
+            release/sbom-frontend.cdx.json
+            release/SHA256SUMS
+
+  upload:
+    name: upload
+    needs: attest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # anexa os artefatos ao GitHub Release
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release
+      - name: Anexar os artefatos ao GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          # Os arquivos precisam ser os mesmos que foram atestados.
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          # --clobber só afeta o release deste tag: reexecução idempotente.
+          gh release upload "$TAG" release/* --clobber

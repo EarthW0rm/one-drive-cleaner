@@ -1,0 +1,46 @@
+# Segredos e configuração local
+.env
+.env.*
+config.toml
+*.pem
+*.key
+
+# Dados locais e bancos
+*.db
+*.sqlite
+*.sqlite-*
+*.sqlite3
+
+# Pesos de modelo e dados de spike/teste
+spikes/**/data/
+tests/model/data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.import_linter_cache/
+*.egg-info/
+build/
+
+# Frontend
+node_modules/
+dist/
+src/odc/web/static/
+
+# Relatórios e cobertura
+coverage/
+htmlcov/
+.coverage
+coverage.xml
+playwright-report/
+test-results/
+
+# Sistema e editores
+.DS_Store
+.idea/
+.vscode/
+volume-report.json

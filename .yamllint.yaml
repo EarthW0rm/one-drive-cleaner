@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# YAML do repositório (plan 10.6): workflows, dependabot, templates, compose e dashboards.
+extends: default
+
+ignore: |
+  .venv/
+  node_modules/
+  frontend/node_modules/
+  e2e/node_modules/
+  build/
+  pnpm-lock.yaml
+  uv.lock
+
+rules:
+  # `on:` dos workflows não é booleano; só chaves literais true/false são relevantes.
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  # Comandos longos em `run:` e URLs em comentários são comuns em workflows.
+  line-length: disable
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable

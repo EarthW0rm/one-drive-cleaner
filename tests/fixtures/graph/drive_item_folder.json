@@ -1,0 +1,7 @@
+{
+  "id": "FAKE-FOLDER-0001",
+  "name": "Pasta Sintetica",
+  "cTag": "FAKE-CTAG-0002",
+  "folder": {"childCount": 3},
+  "parentReference": {"id": "FAKE-ROOT-0001", "driveId": "FAKE-DRIVE-0001"}
+}

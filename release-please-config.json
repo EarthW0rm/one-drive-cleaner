@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "pull-request-title-pattern": "chore(release): ${version}",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "onedrive-cleaner",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "changelog-sections": [
+        { "type": "feat", "section": "Funcionalidades" },
+        { "type": "fix", "section": "Correções" },
+        { "type": "perf", "section": "Desempenho" },
+        { "type": "revert", "section": "Reversões" },
+        { "type": "docs", "section": "Documentação", "hidden": true },
+        { "type": "refactor", "section": "Refatorações", "hidden": true },
+        { "type": "test", "section": "Testes", "hidden": true },
+        { "type": "build", "section": "Build", "hidden": true },
+        { "type": "ci", "section": "CI", "hidden": true },
+        { "type": "chore", "section": "Manutenção", "hidden": true },
+        { "type": "style", "section": "Estilo", "hidden": true }
+      ],
+      "extra-files": [
+        { "type": "json", "path": "frontend/package.json", "jsonpath": "$.version" },
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='onedrive-cleaner')].version"
+        }
+      ]
+    }
+  }
+}

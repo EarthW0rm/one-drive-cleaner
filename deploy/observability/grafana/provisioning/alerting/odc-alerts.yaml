@@ -1,0 +1,267 @@
+# Regras de alerta do plan 5.3.5 (Grafana unified alerting). Metricas: nomes Prometheus do OTLP.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: odc
+    folder: OneDrive Cleaner
+    interval: 1m
+    rules:
+      - uid: odc-diario-pendente
+        title: Diário pendente
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          app: onedrive-cleaner
+          severity: warning
+        annotations:
+          summary: "Há operação pendente no diário por mais de 5 minutos."
+          description: "A reconciliação não concluiu operações de movimentação, restauração ou exclusão."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "sum(odc_journal_pending)"
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+              settings:
+                mode: dropNN
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+      - uid: odc-falso-positivo-alto
+        title: Falso positivo alto
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          app: onedrive-cleaner
+          severity: warning
+        annotations:
+          summary: "Taxa de falso positivo acima de 2% (janela de 1 h) com o modo Automático efetivo."
+          description: "Restaurações por falso positivo superam 2% das quarentenas."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "(sum(rate(odc_quarantine_restores_total{reason=\"false_positive\"}[1h])) / sum(rate(odc_quarantine_moves_total[1h]))) and on() (max(odc_automation_mode_effective_ratio{mode=\"auto\"}) == 1)"
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+              settings:
+                mode: dropNN
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.02]
+      - uid: odc-temporario-no-limite
+        title: Temporário no limite
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          app: onedrive-cleaner
+          severity: warning
+        annotations:
+          summary: "Espaço temporário em 90% ou mais do teto."
+          description: "Teto padrão de 2 GiB (2147483648 bytes); 90% = 1932735283 bytes. Ajustar se o teto for alterado nas configurações."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "max(odc_disk_usage_bytes{component=\"temp\"})"
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+              settings:
+                mode: dropNN
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gte
+                    params: [1932735283]
+      - uid: odc-login-exigido
+        title: Login exigido
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          app: onedrive-cleaner
+          severity: warning
+        annotations:
+          summary: "A aplicação pausou à espera de novo login."
+          description: "Token expirado, revogado ou ausente."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "sum(increase(odc_auth_login_required_total[5m]))"
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+              settings:
+                mode: dropNN
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+      - uid: odc-disco-acima-da-meta
+        title: Disco final acima da meta
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          app: onedrive-cleaner
+          severity: warning
+        annotations:
+          summary: "Espaço ocupado (exceto modelo) acima de 500 MB."
+          description: "Meta da RN-03: 500 MiB (524288000 bytes) ao fim da execução."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "sum(odc_disk_usage_bytes{component!=\"model\"})"
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+              settings:
+                mode: dropNN
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [524288000]
+      - uid: odc-rodada-limitada
+        title: Rodada automática limitada (RN-27)
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          app: onedrive-cleaner
+          severity: warning
+        annotations:
+          summary: "A rodada automática foi limitada a 30% do acervo ativo."
+          description: "Itens excedentes permaneceram SUGERIDO."
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: "sum(increase(odc_quarantine_auto_capped_total[24h]))"
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+              settings:
+                mode: dropNN
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              refId: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]

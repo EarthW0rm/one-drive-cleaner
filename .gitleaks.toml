@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Regras padrão do gitleaks + allowlist restrita (plan 11.3).
+# Valores de teste usam o prefixo `FAKE-`; não há bypass global (nem `--no-verify` documentado).
+
+title = "onedrive-cleaner gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Tokens fake de teste (prefixo FAKE-) e fixtures sintéticas em tests/fakes"
+paths = [
+    '''tests/fakes/.*''',
+]
+regexes = [
+    '''FAKE-[A-Za-z0-9_-]+''',
+]

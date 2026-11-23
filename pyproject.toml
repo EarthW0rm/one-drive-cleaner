@@ -1,0 +1,274 @@
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11.0"]
+build-backend = "uv_build"
+
+[project]
+name = "onedrive-cleaner"
+version = "0.1.0"
+description = "Identifica imagens que não são fotos no OneDrive pessoal e as move para quarentena reversível."
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.20.1",
+    "fastapi>=0.163.2",
+    "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
+    "msal>=1.39.0",
+    "msal-extensions>=1.3.1",
+    "numpy>=2.5.5",
+    "open-clip-torch>=4.2.2",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.45.2",
+    "opentelemetry-instrumentation-fastapi>=0.66b2",
+    "opentelemetry-instrumentation-httpx>=0.66b2",
+    "opentelemetry-instrumentation-logging>=0.66b2",
+    "opentelemetry-instrumentation-system-metrics>=0.66b2",
+    "opentelemetry-sdk>=1.45.2",
+    "platformdirs>=4.14.7",
+    "pillow>=13.0.0",
+    "pillow-heif>=1.8.1",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.3",
+    "scikit-learn>=1.9.1",
+    "sqlalchemy>=2",
+    "starlette>=1.10.0",
+    "torch>=2.15.0",
+    "torchvision>=0.29.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+odc = "odc.cli:main"
+
+[tool.uv]
+required-version = ">=0.10.8"
+
+[tool.uv.sources]
+# No Linux (CI) o torch vem do índice CPU-only: evita ~2 GB de wheels CUDA que o app não usa.
+# No macOS (alvo do produto) continua o wheel padrão do PyPI, com suporte a MPS.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.build-backend]
+module-name = "odc"
+
+[dependency-groups]
+dev = [
+    "actionlint-py>=1.7.12.25",
+    "commitizen>=4.19.3",
+    "deptry",
+    "import-linter",
+    "mypy",
+    "pip-audit",
+    "pip-licenses>=5.5.5",
+    "pre-commit>=4.7.0",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pyyaml",
+    "respx",
+    "ruff",
+    "taplo>=0.9.3",
+    "types-pyyaml",
+    "vulture",
+    "yamllint>=1.38.0",
+    "zizmor>=1.32.0",
+]
+# Ferramentas só do job `sbom` do release (TF-143-07); fora do grupo padrão para não pesar o ambiente de dev.
+release = [
+    "cyclonedx-bom>=8.0.1,<9",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+    "C4",
+    "PL",
+    "RUF",
+    "N",
+    "ANN",
+    "S",
+    "PT",
+    "ASYNC",
+    "PERF",
+    "ERA",
+    "T20",
+    "C901",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+# Asserts e valores literais são idiomáticos em testes; as demais regras seguem ativas.
+"tests/**" = ["S101", "PLR2004"]
+# Migrações listam CHECKs inline; linhas longas fazem parte do DDL versionado.
+"src/odc/storage/migrations/versions/*" = ["E501"]
+# Repositórios recebem campos de linha como argumentos nomeados (keyword-only).
+"src/odc/storage/repositories/*" = ["PLR0913"]
+
+[tool.mypy]
+strict = true
+disallow_any_explicit = true
+disallow_any_generics = true
+warn_unreachable = true
+files = ["src", "scripts", "tests", "spikes"]
+
+[[tool.mypy.overrides]]
+# MSAL e msal-extensions não distribuem tipos; o acesso fica isolado em odc.auth.
+module = ["msal", "msal.*", "msal_extensions", "msal_extensions.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# scikit-learn não distribui py.typed; o uso em produção fica em odc.ml.trainer (treino local).
+module = ["sklearn", "sklearn.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = [".", "scripts"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--cov=odc",
+    "--cov=scripts",
+    "--cov=tests/fakes",
+    "--cov=tests/e2e_launcher",
+    "--cov=spikes",
+    "--cov-branch",
+    "--cov-fail-under=90",
+]
+markers = [
+    "model: testes do aprendizado (qualidade do modelo)",
+    "perf: testes de desempenho",
+    "integration: integração backend com Graph fake in-process",
+    "resilience: falhas e interrupções",
+    "volume: volumetria (50 mil itens)",
+]
+
+[tool.coverage.run]
+branch = true
+# Caminhos relativos no coverage.xml: o Sonar mapeia os arquivos no job `sonar-quality-gate`.
+relative_files = true
+omit = [
+    "src/odc/storage/migrations/env.py",
+    "src/odc/storage/migrations/versions/*",
+]
+disable_warnings = ["module-not-imported"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_also = ["if __name__ == .__main__.:"]
+
+[tool.importlinter]
+root_package = "odc"
+include_external_packages = false
+
+[[tool.importlinter.contracts]]
+name = "Camadas do monolito modular"
+type = "layers"
+layers = [
+    "odc.web",
+    "odc.jobs",
+    "odc.quarantine | odc.scanning | odc.cleanup",
+    "odc.ml",
+    "odc.features",
+    "odc.graph | odc.storage",
+    "odc.auth",
+]
+
+[[tool.importlinter.contracts]]
+name = "graph, storage e auth não importam web"
+type = "forbidden"
+source_modules = ["odc.graph", "odc.storage", "odc.auth"]
+forbidden_modules = ["odc.web"]
+
+[[tool.importlinter.contracts]]
+name = "ml não importa graph"
+type = "forbidden"
+source_modules = ["odc.ml"]
+forbidden_modules = ["odc.graph"]
+
+[[tool.importlinter.contracts]]
+name = "telemetry é transversal e não depende de módulos de domínio"
+type = "forbidden"
+source_modules = ["odc.telemetry"]
+forbidden_modules = [
+    "odc.web",
+    "odc.auth",
+    "odc.graph",
+    "odc.scanning",
+    "odc.features",
+    "odc.ml",
+    "odc.jobs",
+    "odc.quarantine",
+    "odc.storage",
+    "odc.cleanup",
+]
+
+[[tool.importlinter.contracts]]
+name = "Módulos de domínio independentes entre si"
+type = "independence"
+modules = ["odc.quarantine", "odc.scanning", "odc.cleanup"]
+
+[tool.deptry]
+known_first_party = ["odc"]
+extend_exclude = ["scripts", "tests", "spikes"]
+
+[tool.deptry.per_rule_ignores]
+# itsdangerous: exigido em runtime pelo SessionMiddleware do Starlette (cookie assinado).
+# torchvision: exigido pelo open-clip-torch e fixado aqui para casar com o torch do índice CPU-only.
+# torch e open-clip-torch: importados por importlib em odc.features.embedder (isolamento de tipos).
+# pillow-heif: registrado por importlib em odc.features.decode (HEIC opcional no Pillow).
+DEP002 = ["itsdangerous", "torch", "torchvision", "open-clip-torch", "pillow-heif"]
+
+[tool.vulture]
+paths = ["src", "scripts", "spikes"]
+min_confidence = 80
+# Parâmetros exigidos pelas assinaturas de BaseSettings.settings_customise_sources e
+# PydanticBaseSettingsSource.get_field_value: o pydantic-settings os passa por nome.
+# Parâmetros do Protocol MsalClient (odc.auth.msal_client): o MSAL os recebe por nome.
+ignore_names = [
+    "cls",
+    "dotenv_settings",
+    "file_secret_settings",
+    "field",
+    "traceback",
+    "scopes",
+    "prompt",
+    "auth_code_flow",
+    "auth_response",
+]
+
+[tool.odc.test-pairs]
+# Módulos de produção isentos de teste unitário pareado (plan 10.1).
+exclude = [
+    "src/odc/storage/migrations/env.py",
+    "src/odc/storage/migrations/versions/*",
+]
+
+[tool.commitizen]
+# Validação de Conventional Commits no hook commit-msg (plan 11.4). Escopos permitidos
+# são validados pelo hook `conventional-commit-scope` em .pre-commit-config.yaml.
+name = "cz_conventional_commits"

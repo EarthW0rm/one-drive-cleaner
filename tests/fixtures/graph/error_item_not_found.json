@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "itemNotFound",
+    "message": "Item sintetico ausente"
+  }
+}

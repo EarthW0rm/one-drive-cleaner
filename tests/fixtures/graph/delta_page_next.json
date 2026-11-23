@@ -1,0 +1,9 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(driveItem)",
+  "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/drive/items/FAKE-ROOT-0001/delta?$skiptoken=FAKE-SKIP-0001",
+  "value": [
+    {"id": "FAKE-ITEM-0001", "name": "foto-sintetica-001.jpg", "file": {"mimeType": "image/jpeg"}, "image": {"width": 4032, "height": 3024}},
+    {"name": "item-sem-identificador.jpg", "file": {"mimeType": "image/png"}},
+    {"id": "FAKE-ITEM-0002", "image": {"width": "abc"}}
+  ]
+}

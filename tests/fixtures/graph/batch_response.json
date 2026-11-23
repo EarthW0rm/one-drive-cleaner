@@ -1,0 +1,19 @@
+{
+  "responses": [
+    {
+      "id": "1",
+      "status": 200,
+      "headers": {"Content-Type": "application/json"},
+      "body": {"url": "https://example.invalid/thumb/FAKE-THUMB-0001?sig=FAKE-SIGNATURE"}
+    },
+    {
+      "id": "2",
+      "status": 404,
+      "body": {"error": {"code": "itemNotFound", "message": "Item sintetico ausente"}}
+    },
+    {
+      "status": 200,
+      "body": {"url": "https://example.invalid/thumb/FAKE-THUMB-0002?sig=FAKE-SIGNATURE"}
+    }
+  ]
+}

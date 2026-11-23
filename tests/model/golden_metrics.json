@@ -1,0 +1,29 @@
+{
+  "embedding_model": "ViT-B-32/laion2b_s34b_b79k",
+  "manifest_sha256": "406fb0f6532d82ac868093fe18906f50b29670d23e1969c4e2dae90cc13bc8ba",
+  "screenshots_count": 160,
+  "screenshots_seed": 1520,
+  "supervised": {
+    "macro_f1": 0.986013986013986,
+    "precision": {
+      "document_receipt": 1.0,
+      "meme_sticker": 1.0,
+      "real_photo": 1.0,
+      "screenshot": 0.9411764705882353
+    },
+    "removable_precision": 1.0,
+    "removable_support": 60
+  },
+  "tolerance_pp": 2.0,
+  "zero_shot": {
+    "macro_f1": 0.8264170938967687,
+    "precision": {
+      "document_receipt": 0.9565217391304348,
+      "meme_sticker": 0.34782608695652173,
+      "real_photo": 0.9463414634146341,
+      "screenshot": 1.0
+    },
+    "removable_precision": 1.0,
+    "removable_support": 82
+  }
+}

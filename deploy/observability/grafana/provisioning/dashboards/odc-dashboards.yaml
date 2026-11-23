@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: OneDrive Cleaner
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /otel-lgtm/odc-dashboards
+      foldersFromFilesStructure: false

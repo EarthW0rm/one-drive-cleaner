@@ -1,0 +1,21 @@
+{
+  "id": "FAKE-ITEM-0001",
+  "name": "foto-sintetica-001.jpg",
+  "size": 2048576,
+  "cTag": "FAKE-CTAG-0001",
+  "eTag": "FAKE-ETAG-0001",
+  "createdDateTime": "2024-05-01T10:00:00Z",
+  "lastModifiedDateTime": "2024-05-02T11:30:00Z",
+  "parentReference": {
+    "id": "FAKE-PARENT-0001",
+    "driveId": "FAKE-DRIVE-0001",
+    "path": "/drive/root:/Pasta Sintetica"
+  },
+  "file": {"mimeType": "image/jpeg"},
+  "image": {"width": 4032, "height": 3024},
+  "photo": {
+    "cameraMake": "FakeMake",
+    "cameraModel": "FakeModel 1",
+    "takenDateTime": "2024-04-30T18:15:00Z"
+  }
+}
