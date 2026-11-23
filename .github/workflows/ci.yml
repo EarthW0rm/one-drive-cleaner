@@ -39,6 +39,12 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: make lint-python
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lint-ruff
+          path: build/reports/ruff.json
+          if-no-files-found: error
+          retention-days: 14
 
   lint-frontend:
     name: lint-frontend
@@ -61,6 +67,12 @@ jobs:
             frontend/pnpm-lock.yaml
             e2e/pnpm-lock.yaml
       - run: make lint-frontend
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lint-eslint
+          path: build/reports/eslint.json
+          if-no-files-found: error
+          retention-days: 14
       # Projeto pnpm da suíte E2E (plan 10.5): ESLint (plugin playwright), Prettier e tsc.
       - run: make lint-e2e
 
@@ -360,3 +372,43 @@ jobs:
         with:
           fail-on-severity: high
           deny-licenses: GPL-2.0-only, GPL-2.0, SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0, CC-BY-NC-SA-4.0
+
+  # Quality gate consolidado (plan 10.6/11.2). Consome cobertura e relatórios de lint dos jobs
+  # anteriores; análise sempre via CI. PRs de fork e do Dependabot não recebem SONAR_TOKEN: o job
+  # é pulado (status skipped, aceito pelo ruleset) e a análise do fork roda após o merge na `main`.
+  sonar-quality-gate:
+    name: sonar-quality-gate
+    needs: [test-backend, test-frontend, lint-python, lint-frontend]
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Histórico completo: o Sonar calcula "código novo" e blame.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage-xml
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage-lcov
+          path: frontend/coverage
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: lint-ruff
+          path: build/reports
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: lint-eslint
+          path: build/reports
+      - uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
+        env:
+          # Só via env do step; nunca ecoado.
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # Falha o job se o quality gate reprovar (aguarda o resultado da análise).
+          args: -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=600

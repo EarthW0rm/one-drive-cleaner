@@ -11,8 +11,14 @@ E2E_DIR := e2e
 # pytest sem testes coletados retorna 5; só é tolerado nas suítes vazias marcadas.
 PYTEST_EMPTY_OK = rc=$$?; [ $$rc -eq 5 ] && echo "suite vazia (exit 5 tolerado)" || exit $$rc
 
+# Relatórios de lint (JSON) para o Sonar (TF-143-06) ficam em build/reports/ (não versionado);
+# a execução com saída humana vem primeiro, então o JSON só é gravado com o lint limpo.
+REPORTS_DIR := build/reports
+
 lint-python:
 	uv run ruff check .
+	mkdir -p $(REPORTS_DIR)
+	uv run ruff check . --output-format json --output-file $(REPORTS_DIR)/ruff.json
 	uv run ruff format --check .
 	uv run mypy
 	uv run lint-imports
@@ -22,6 +28,8 @@ lint-python:
 lint-frontend:
 	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
 	pnpm --dir $(FRONTEND_DIR) run lint
+	mkdir -p $(REPORTS_DIR)
+	pnpm --dir $(FRONTEND_DIR) run lint:report
 
 lint-e2e:
 	pnpm --dir $(E2E_DIR) install --frozen-lockfile

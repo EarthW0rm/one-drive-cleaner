@@ -164,6 +164,8 @@ markers = [
 
 [tool.coverage.run]
 branch = true
+# Caminhos relativos no coverage.xml: o Sonar mapeia os arquivos no job `sonar-quality-gate`.
+relative_files = true
 omit = [
     "src/odc/storage/migrations/env.py",
     "src/odc/storage/migrations/versions/*",

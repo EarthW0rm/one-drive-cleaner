@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "contract:types": "openapi-typescript src/api/openapi.json -o src/api/schema.gen.ts && node -e \"const fs=require('fs');const f='src/api/schema.gen.ts';fs.writeFileSync(f,'// SPDX-License-Identifier: GPL-3.0-only\\n'+fs.readFileSync(f,'utf8'))\"",
     "lint": "eslint . && prettier --check . && tsc --noEmit && knip",
+    "lint:report": "eslint . --format json --output-file ../build/reports/eslint.json",
     "test": "vitest run --coverage",
     "format": "prettier --write ."
   },
