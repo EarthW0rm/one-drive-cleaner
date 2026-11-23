@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Markdown dos artefatos SDD e da documentação (plan 10.6). Diagramas ficam em blocos plantuml.
+globs:
+  - "docs/**/*.md"
+  - "*.md"
+ignores:
+  - "node_modules/**"
+  - ".venv/**"
+  - "**/node_modules/**"
+  - "build/**"
+config:
+  default: true
+  # Tabelas largas, URLs e comandos: sem limite de linha.
+  MD013: false
+  # Artefatos SDD repetem títulos de seção por tarefa e usam HTML pontual.
+  MD024: false
+  MD033: false
+  MD036: false
+  MD041: false
+  MD060: false
+  # Artefatos SDD aprovados compactam listas, cercas e títulos sem linha em branco.
+  MD022: false
+  MD031: false
+  MD032: false
+  # O plan.md (aprovado, imutável) usa cerca sem linguagem para a árvore de diretórios.
+  MD040: false

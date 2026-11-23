@@ -10,6 +10,8 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}", "eslint-rules/**/*.test.js"],
     coverage: {
       provider: "v8",
+      // lcov.info é publicado como artefato no CI e consumido pelo Sonar (TF-143-06).
+      reporter: ["text", "html", "lcov"],
       include: ["src/**/*.{ts,tsx}", "eslint-rules/**/*.js"],
       exclude: [
         "src/main.tsx",

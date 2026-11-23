@@ -2,8 +2,9 @@
 # Gates de qualidade (plan 10.1 e 10.6). Alvos de front delegam a `pnpm --dir frontend`;
 # a suíte E2E (Playwright) é um projeto pnpm próprio em `e2e/` (plan 10.5).
 
-.PHONY: lint lint-python lint-frontend lint-e2e lint-repo test test-python test-frontend \
-	build-frontend contract test-integration test-resilience test-telemetry model-data test-model test-volume test-e2e test-all obs-up obs-down
+.PHONY: lint lint-python lint-frontend lint-e2e lint-repo deps-audit license-check test test-python \
+	test-frontend build-frontend contract test-integration test-resilience test-telemetry model-data \
+	test-model-unit test-model test-volume test-e2e test-all obs-up obs-down
 
 FRONTEND_DIR := frontend
 E2E_DIR := e2e
@@ -37,9 +38,47 @@ contract:
 	pnpm --dir $(FRONTEND_DIR) run contract:types
 	git diff --exit-code -- $(FRONTEND_DIR)/src/api/openapi.json $(FRONTEND_DIR)/src/api/schema.gen.ts
 
+# Verificações do repositório (plan 10.6): workflows, YAML, Markdown, TOML, SPDX e PlantUML.
+# zizmor usa GH_TOKEN/GITHUB_TOKEN nas auditorias online (pins, actions vulneráveis); sem token
+# elas são puladas localmente e rodam no CI. PLANTUML aponta para o jar no CI.
+PLANTUML ?= plantuml
+MARKDOWNLINT := pnpm dlx markdownlint-cli2@0.24.1
+
 lint-repo:
+	uv run actionlint
+	uv run zizmor --no-progress .github
+	uv run yamllint --strict .
+	$(MARKDOWNLINT)
+	uv run taplo check
+	uv run taplo format --check
 	uv run python scripts/check_spdx.py
 	uv run python scripts/check_test_pairs.py
+	$(PLANTUML) -checkonly -failonerror "docs/**/*.md"
+
+# Vulnerabilidades conhecidas nas dependências resolvidas: Python (uv.lock via pip-audit; o sufixo
+# local `+cpu` do torch do índice CPU-only é removido para consulta no PyPI) e npm (nível alto+).
+AUDIT_DIR := build/audit
+
+deps-audit:
+	mkdir -p $(AUDIT_DIR)
+	uv export --frozen --no-emit-project --no-hashes --format requirements-txt \
+		| sed 's/+cpu//' > $(AUDIT_DIR)/requirements.txt
+	uv run pip-audit -r $(AUDIT_DIR)/requirements.txt --no-deps --disable-pip --progress-spinner off
+	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
+	pnpm --dir $(FRONTEND_DIR) audit --audit-level high
+	pnpm --dir $(E2E_DIR) install --frozen-lockfile
+	pnpm --dir $(E2E_DIR) audit --audit-level high
+
+# Licenças compatíveis com GPL-3.0 (plan 11.5): Python instalado (runtime + dev) e npm de produção
+# (o que a SPA embute). Exceções verificadas: [tool.odc.license-check.overrides] no pyproject.
+LICENSE_DIR := build/license-check
+
+license-check:
+	mkdir -p $(LICENSE_DIR)
+	uv run pip-licenses --from=mixed --format=json --output-file $(LICENSE_DIR)/python.json
+	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
+	pnpm --dir $(FRONTEND_DIR) licenses list --json --prod > $(LICENSE_DIR)/node.json
+	uv run python scripts/license_check.py --python $(LICENSE_DIR)/python.json --node $(LICENSE_DIR)/node.json
 
 lint: lint-python lint-frontend lint-e2e lint-repo
 
@@ -70,6 +109,10 @@ test-telemetry:
 # e verifica o SHA-256 de cada arquivo. Sem ele, os testes `model` de qualidade são pulados.
 model-data:
 	uv run python tests/model/data_gen/download.py
+
+# Testes rápidos do modelo para o PR (sem `model`/`perf`); suíte vazia (exit 5) é tolerada.
+test-model-unit:
+	uv run pytest tests/model -m "not model and not perf" --no-cov -q; $(PYTEST_EMPTY_OK)
 
 test-model:
 	uv run pytest -m "model or perf" --no-cov tests; $(PYTEST_EMPTY_OK)

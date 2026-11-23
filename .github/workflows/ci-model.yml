@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Suíte do modelo (plan 10.3 e 11.5): `model` e `perf` com pesos e conjunto de referência em cache.
+# Não é status check obrigatório; roda em PR que toca ML/features/testes do modelo e semanalmente.
+# Equivalência MPS vs CPU só roda local (runners sem MPS).
+name: ci-model
+
+on:
+  pull_request:
+    paths:
+      - "src/odc/ml/**"
+      - "src/odc/features/**"
+      - "tests/model/**"
+      - ".github/workflows/ci-model.yml"
+  schedule:
+    - cron: "17 5 * * 1" # segundas, 05:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: ci-model-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  UV_LOCKED: "1"
+  UV_PYTHON: "3.12"
+
+jobs:
+  model:
+    name: model
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Cache do conjunto de referência CC0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/model/data
+          key: model-data-${{ hashFiles('tests/model/data_gen/photos_manifest.json', 'tests/model/data_gen/download.py') }}
+      - name: Cache dos pesos do modelo (ViT-B-32 laion2b_s34b_b79k)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/huggingface/hub/models--laion--CLIP-ViT-B-32-laion2B-s34B-b79K
+          # Pesos são imutáveis por revisão: a chave só muda se o modelo aprovado mudar.
+          key: model-weights-v1
+      - name: Baixar conjunto de referência (verifica SHA-256 do manifesto)
+        run: make model-data
+      - name: Testes model e perf
+        env:
+          # Autoriza baixar os pesos (~600 MB) quando o cache está vazio.
+          ODC_MODEL_TEST_DOWNLOAD: "1"
+        run: make test-model
+
+  volume:
+    name: volume
+    # Volumetria (50 mil itens, ~4 min) é semanal/manual: nunca em PR.
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: make test-volume
+        env:
+          ODC_VOLUME_REPORT: volume-report.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: volume-report
+          path: volume-report.json
+          if-no-files-found: warn
+          retention-days: 90

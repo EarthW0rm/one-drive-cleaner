@@ -1,0 +1,362 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Status checks obrigatórios da `main` (plan 11.2 e 11.5). O NOME de cada job é contrato com o
+# ruleset (scripts/github/apply-repo-settings.sh): não renomear sem atualizar o ruleset.
+name: ci
+
+on:
+  pull_request:
+    # `edited` reavalia `pr-title` quando o título muda; os demais jobs repetem junto (idempotente).
+    types: [opened, reopened, synchronize, edited]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Lockfile é a fonte da verdade: `uv run` falha se uv.lock estiver desatualizado.
+  UV_LOCKED: "1"
+  UV_PYTHON: "3.12"
+
+jobs:
+  lint-python:
+    name: lint-python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: make lint-python
+
+  lint-frontend:
+    name: lint-frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            e2e/pnpm-lock.yaml
+      - run: make lint-frontend
+      # Projeto pnpm da suíte E2E (plan 10.5): ESLint (plugin playwright), Prettier e tsc.
+      - run: make lint-e2e
+
+  lint-repo:
+    name: lint-repo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PLANTUML_VERSION: "1.2026.2"
+      PLANTUML_SHA256: 3cdce52133c424dea22425b947ae9d47f2167b0866dfcf99e714d4ea1689975c
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Instalar PlantUML (jar fixado por versão e SHA-256)
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/plantuml.jar" \
+            "https://github.com/plantuml/plantuml/releases/download/v${PLANTUML_VERSION}/plantuml-${PLANTUML_VERSION}.jar"
+          echo "${PLANTUML_SHA256}  $RUNNER_TEMP/plantuml.jar" | sha256sum --check --strict
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends graphviz
+      - name: lint-repo
+        env:
+          # Auditorias online do zizmor (pins, actions vulneráveis); somente leitura.
+          GH_TOKEN: ${{ github.token }}
+        run: make lint-repo PLANTUML="java -Djava.awt.headless=true -jar $RUNNER_TEMP/plantuml.jar"
+
+  deps-audit:
+    name: deps-audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            e2e/pnpm-lock.yaml
+      - run: make deps-audit
+
+  test-backend:
+    name: test-backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Unitários com gate de cobertura (gera coverage.xml)
+        env:
+          PYTEST_ADDOPTS: --cov-report=term --cov-report=xml
+        run: make test-python
+      # Marcador `integration`: Graph fake, resiliência (kill-and-resume) e privacidade da telemetria.
+      - run: make test-integration
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  test-frontend:
+    name: test-frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: make test-frontend
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-lcov
+          path: frontend/coverage/lcov.info
+          if-no-files-found: warn
+          retention-days: 14
+
+  contract:
+    name: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: make contract
+
+  test-model-unit:
+    name: test-model-unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # `pytest tests/model -m "not model and not perf"`; suíte vazia (exit 5) é tolerada.
+      - run: make test-model-unit
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            e2e/pnpm-lock.yaml
+      - name: Instalar dependências do projeto E2E
+        run: pnpm --dir e2e install --frozen-lockfile
+      - name: Cache dos navegadores do Playwright
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/pnpm-lock.yaml') }}
+      - name: Instalar navegadores e dependências de sistema (Chromium e WebKit)
+        run: pnpm --dir e2e exec playwright install --with-deps chromium webkit
+      # Recompila a SPA (build-frontend) e roda Chromium + WebKit contra o `odc` real com fakes.
+      # CI=true (definido pelo GitHub) ativa retries=1 e o relatório HTML com trace.
+      - run: make test-e2e
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  license-check:
+    name: license-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.10.8"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: make license-check
+
+  pr-title:
+    name: pr-title
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read # lê o título do PR
+    steps:
+      # O título do PR vira a mensagem do squash (plan 11.4): tipo e escopo em inglês.
+      - uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6.1.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            docs
+            refactor
+            test
+            build
+            ci
+            chore
+            style
+            revert
+          scopes: |
+            auth
+            graph
+            scan
+            features
+            ml
+            jobs
+            quarantine
+            storage
+            web
+            ui
+            telemetry
+            ci
+            release
+            deps
+            repo
+          requireScope: true
+
+  dependency-review:
+    name: dependency-review
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Bloqueia dependência nova com vulnerabilidade alta/crítica ou licença incompatível com
+      # GPL-3.0 (plan 11.3 e 11.5).
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-2.0-only, GPL-2.0, SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0, CC-BY-NC-SA-4.0

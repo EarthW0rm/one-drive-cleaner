@@ -34,6 +34,7 @@ dependencies = [
     "sqlalchemy>=2",
     "starlette>=1.10.0",
     "torch>=2.15.0",
+    "torchvision>=0.29.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -43,16 +44,29 @@ odc = "odc.cli:main"
 [tool.uv]
 required-version = ">=0.10.8"
 
+[tool.uv.sources]
+# No Linux (CI) o torch vem do índice CPU-only: evita ~2 GB de wheels CUDA que o app não usa.
+# No macOS (alvo do produto) continua o wheel padrão do PyPI, com suporte a MPS.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.uv.build-backend]
 module-name = "odc"
 
 [dependency-groups]
 dev = [
+    "actionlint-py>=1.7.12.25",
     "commitizen>=4.19.3",
     "deptry",
     "import-linter",
     "mypy",
     "pip-audit",
+    "pip-licenses>=5.5.5",
     "pre-commit>=4.7.0",
     "pytest",
     "pytest-asyncio",
@@ -60,8 +74,11 @@ dev = [
     "pyyaml",
     "respx",
     "ruff",
+    "taplo>=0.9.3",
     "types-pyyaml",
     "vulture",
+    "yamllint>=1.38.0",
+    "zizmor>=1.32.0",
 ]
 
 [tool.ruff]
@@ -71,8 +88,25 @@ src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = [
-    "E", "W", "F", "I", "B", "UP", "SIM", "C4", "PL", "RUF", "N",
-    "ANN", "S", "PT", "ASYNC", "PERF", "ERA", "T20", "C901",
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+    "C4",
+    "PL",
+    "RUF",
+    "N",
+    "ANN",
+    "S",
+    "PT",
+    "ASYNC",
+    "PERF",
+    "ERA",
+    "T20",
+    "C901",
 ]
 
 [tool.ruff.lint.mccabe]
@@ -175,8 +209,16 @@ name = "telemetry é transversal e não depende de módulos de domínio"
 type = "forbidden"
 source_modules = ["odc.telemetry"]
 forbidden_modules = [
-    "odc.web", "odc.auth", "odc.graph", "odc.scanning", "odc.features",
-    "odc.ml", "odc.jobs", "odc.quarantine", "odc.storage", "odc.cleanup",
+    "odc.web",
+    "odc.auth",
+    "odc.graph",
+    "odc.scanning",
+    "odc.features",
+    "odc.ml",
+    "odc.jobs",
+    "odc.quarantine",
+    "odc.storage",
+    "odc.cleanup",
 ]
 
 [[tool.importlinter.contracts]]
@@ -190,9 +232,10 @@ extend_exclude = ["scripts", "tests", "spikes"]
 
 [tool.deptry.per_rule_ignores]
 # itsdangerous: exigido em runtime pelo SessionMiddleware do Starlette (cookie assinado).
+# torchvision: exigido pelo open-clip-torch e fixado aqui para casar com o torch do índice CPU-only.
 # torch e open-clip-torch: importados por importlib em odc.features.embedder (isolamento de tipos).
 # pillow-heif: registrado por importlib em odc.features.decode (HEIC opcional no Pillow).
-DEP002 = ["itsdangerous", "torch", "open-clip-torch", "pillow-heif"]
+DEP002 = ["itsdangerous", "torch", "torchvision", "open-clip-torch", "pillow-heif"]
 
 [tool.vulture]
 paths = ["src", "scripts", "spikes"]
@@ -201,8 +244,15 @@ min_confidence = 80
 # PydanticBaseSettingsSource.get_field_value: o pydantic-settings os passa por nome.
 # Parâmetros do Protocol MsalClient (odc.auth.msal_client): o MSAL os recebe por nome.
 ignore_names = [
-    "cls", "dotenv_settings", "file_secret_settings", "field", "traceback",
-    "scopes", "prompt", "auth_code_flow", "auth_response",
+    "cls",
+    "dotenv_settings",
+    "file_secret_settings",
+    "field",
+    "traceback",
+    "scopes",
+    "prompt",
+    "auth_code_flow",
+    "auth_response",
 ]
 
 [tool.odc.test-pairs]

@@ -67,7 +67,7 @@ A equipe responsável pela comunidade pode adotar as medidas abaixo, de forma pr
 ## Créditos
 
 Este Código de Conduta foi adaptado do [Contributor Covenant][homepage], versão 2.1, disponível em
-https://www.contributor-covenant.org/pt-br/version/2/1/code_of_conduct.html.
+<https://www.contributor-covenant.org/pt-br/version/2/1/code_of_conduct.html>.
 
 Tradução para PT-BR preparada para este projeto. Em caso de divergência de sentido, prevalece a versão original em inglês.
 
