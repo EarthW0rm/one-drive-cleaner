@@ -56,8 +56,8 @@ LOOPBACK = "127.0.0.1"
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Isola HOME e remove variáveis ODC_* do ambiente do processo de teste."""
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, macos_platformdirs: None) -> Path:
+    """Isola HOME (layout macOS) e remove variáveis ODC_* do ambiente do processo de teste."""
     monkeypatch.setenv("HOME", str(tmp_path))
     for name in list(os.environ):
         if name.startswith("ODC_"):

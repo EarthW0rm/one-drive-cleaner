@@ -107,7 +107,10 @@ def test_nenhum_arquivo_de_token_e_criado_em_disco(
 
 
 def test_diretorio_padrao_fica_em_auth_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, keychain: type[FakeKeychain]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    keychain: type[FakeKeychain],
+    macos_platformdirs: None,
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
 

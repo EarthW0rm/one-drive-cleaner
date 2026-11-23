@@ -12,8 +12,8 @@ KEY = account_key("conta-de-teste")
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Redireciona HOME para tmp_path para que platformdirs não toque no diretório real."""
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, macos_platformdirs: None) -> Path:
+    """Redireciona HOME para tmp_path (layout macOS do platformdirs, em qualquer plataforma)."""
     monkeypatch.setenv("HOME", str(tmp_path))
     return tmp_path
 
