@@ -3,7 +3,7 @@
 # a suíte E2E (Playwright) é um projeto pnpm próprio em `e2e/` (plan 10.5).
 
 .PHONY: lint lint-python lint-frontend lint-e2e lint-repo deps-audit license-check test test-python \
-	test-frontend build-frontend contract test-integration test-resilience test-telemetry model-data \
+	test-frontend build-frontend build-dist verify-dist sbom sbom-python sbom-frontend contract test-integration test-resilience test-telemetry model-data \
 	test-model-unit test-model test-volume test-e2e test-all obs-up obs-down
 
 FRONTEND_DIR := frontend
@@ -39,6 +39,40 @@ build-frontend:
 	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
 	pnpm --dir $(FRONTEND_DIR) run build
 
+# Pacote de release (plan 11.6, TF-143-07): SPA compilada e embutida no wheel + sdist em dist/.
+DIST_DIR := dist
+
+build-dist: build-frontend
+	rm -rf $(DIST_DIR)
+	uv build --out-dir $(DIST_DIR)
+
+# Reprova wheel/sdist com conteúdo fora da allowlist (segredos, bancos, tests/, imagens fora de
+# assets, SPA ausente). VERSION=X.Y.Z também confere a versão dos nomes dos arquivos.
+verify-dist:
+	uv run --no-project python scripts/verify_dist.py $(DIST_DIR) $(if $(VERSION),--version $(VERSION))
+
+# SBOM CycloneDX 1.6 (plan 11.6). Python: dependências de runtime do uv.lock; as entradas `+cpu`
+# do índice CPU-only do Linux saem, para listar o torch do PyPI usado no macOS (alvo do produto).
+# Frontend: `pnpm sbom` (nativo, lê o pnpm-lock.yaml): `@cyclonedx/cyclonedx-npm` depende de
+# `npm ls` e não lê a árvore do pnpm (inclui devDependencies e falha com peers ausentes).
+SBOM_DIR := build/sbom
+
+sbom: sbom-python sbom-frontend
+
+sbom-python:
+	mkdir -p $(SBOM_DIR)
+	uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt \
+		| grep -v -- '+cpu' | sed "s/ ; sys_platform != 'linux'//" > $(SBOM_DIR)/requirements.txt
+	uv run --locked --only-group release cyclonedx-py requirements --pyproject pyproject.toml \
+		--mc-type application --spec-version 1.6 --output-reproducible --output-format JSON \
+		--output-file $(SBOM_DIR)/sbom-python.cdx.json $(SBOM_DIR)/requirements.txt
+
+sbom-frontend:
+	mkdir -p $(SBOM_DIR)
+	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile
+	pnpm --dir $(FRONTEND_DIR) sbom --sbom-format cyclonedx --sbom-spec-version 1.6 \
+		--sbom-type application --prod --out $(CURDIR)/$(SBOM_DIR)/sbom-frontend.cdx.json
+
 # Contrato OpenAPI -> tipos TS (plan 4.1): regenera e falha se divergir do versionado.
 contract:
 	uv run python scripts/export_openapi.py
@@ -69,7 +103,7 @@ AUDIT_DIR := build/audit
 
 deps-audit:
 	mkdir -p $(AUDIT_DIR)
-	uv export --frozen --no-emit-project --no-hashes --format requirements-txt \
+	uv export --locked --no-emit-project --no-hashes --format requirements-txt \
 		| sed 's/+cpu//' > $(AUDIT_DIR)/requirements.txt
 	uv run pip-audit -r $(AUDIT_DIR)/requirements.txt --no-deps --disable-pip --progress-spinner off
 	pnpm --dir $(FRONTEND_DIR) install --frozen-lockfile

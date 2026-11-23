@@ -80,6 +80,10 @@ dev = [
     "yamllint>=1.38.0",
     "zizmor>=1.32.0",
 ]
+# Ferramentas só do job `sbom` do release (TF-143-07); fora do grupo padrão para não pesar o ambiente de dev.
+release = [
+    "cyclonedx-bom>=8.0.1,<9",
+]
 
 [tool.ruff]
 target-version = "py312"

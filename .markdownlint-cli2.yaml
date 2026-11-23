@@ -4,6 +4,8 @@ globs:
   - "docs/**/*.md"
   - "*.md"
 ignores:
+  # Gerado pelo release-please (Release PR); o formato não é editável à mão.
+  - "CHANGELOG.md"
   - "node_modules/**"
   - ".venv/**"
   - "**/node_modules/**"

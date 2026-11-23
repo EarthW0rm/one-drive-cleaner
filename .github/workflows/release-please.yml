@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Release PR e GitHub Release a partir dos Conventional Commits (plan 11.4 e 11.5, TF-143-07).
+# O token do GitHub App (environment `release`, restrito à `main`) é obrigatório: PRs e releases
+# criados com o `GITHUB_TOKEN` não disparam o CI exigido pelo ruleset nem o `release.yml`.
+# Variável `RELEASE_APP_ID` (ID ou Client ID do App) e secret `RELEASE_APP_PRIVATE_KEY`.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release-please:
+    name: release-please
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    # Sem permissões no GITHUB_TOKEN: toda escrita usa o token efêmero do App abaixo.
+    permissions: {}
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
