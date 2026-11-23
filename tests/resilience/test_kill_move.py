@@ -149,8 +149,14 @@ def test_kill_no_11o_patch_de_30_restauracoes_devolve_cada_item_a_origem(
     assert state_db.states()["QUARENTENA"] == RESTORED - (RESTORE_KILLED_ON_PATCH - 1)
     assert state_db.pending_intents() == 1
     assert state_db.jobs_of("restore", "running") == 1
+    # Os 30 rótulos criados pelo POST passam do `retrain_every` e enfileiram `train(threshold)`,
+    # que roda em paralelo no worker de background (e encadeia classify/auto_actions); em runner
+    # lento ele ainda está `running` na hora da queda. O processo já morreu, então a contagem é
+    # estável: o restore (verificado acima) mais o que mais estiver em andamento.
+    running = [j for j in state_db.jobs() if j.status == "running"]
+    assert {j.type for j in running} <= {"restore", "train", "classify", "auto_actions"}
 
-    assert state_db.age_running_jobs() == 1
+    assert state_db.age_running_jobs() == len(running)
     odc_app.start()
     _await_idle(odc_app, state_db, "restauração convergida após o reinício")
 
